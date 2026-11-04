@@ -1,0 +1,50 @@
+# Storyteller runtime state and private user data
+projects.json
+projects.json.*
+.storyteller/
+**/.storyteller/
+Demo-Story/
+models/
+*.gguf
+*.ggml
+*.safetensors
+*.pt
+*.bin
+*.log
+*.log.*
+*.sqlite3
+*.db
+*.jsonl
+*.bak
+*.backup
+*.tmp
+*.pid
+*.lock
+*~
+.#*
+*.swp
+*.swo
+*.orig
+*.rej
+
+# Temporary editor / importer files
+edit-prefix-*.txt
+edit-suffix-*.txt
+integration-test*
+test-output/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.env
+.env.*
+dist/
+build/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
