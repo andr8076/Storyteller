@@ -76,15 +76,54 @@ def is_narrative_exchange(user_prompt, scene):
         r"\b(summary|summarize|outline|profile|data dump|catalogue|"
         r"list facts|explain|analy[sz]e|brainstorm|plot ideas|"
         r"character sheet|describe the character)\b", prompt))
-    if non_narrative:
+    # Negative instructions such as "Do not analyze, summarize, or explain"
+    # should NOT disqualify an otherwise explicit creative-writing request.
+    # However, actual requests to write profiles or summaries stay non-narrative.
+    reference_request = bool(re.search(
+        r"\b(?:write|create|give|make)\s+(?:(?:me|a|an|the)\s+){0,3}"
+        r"(?:(?:character|story|scene)\s+)?"
+        r"(?:profile|summary|outline|analysis)\b", prompt))
+    if reference_request:
+        return False
+    looks_like_prose = (
+        len(prompt) >= 400 and len(scene) >= 400 and
+        scene.count(".") >= 5 and
+        (scene.count("\n") >= 2 or scene.count('"') >= 2 or
+         scene.count("“") >= 2))
+    # Story text may itself mention "summarize" or "analysis" in dialogue.
+    # Such words are not requests to analyze that story.
+    explicit_reference_request = bool(re.match(
+        r"^(?:please\s+)?(?:summari[sz]e|analy[sz]e|explain|outline|"
+        r"brainstorm|list\s+(?:the\s+)?facts|give\s+me\s+a\s+summary)\b",
+        prompt))
+    if explicit_reference_request:
+        return False
+    if non_narrative and not (explicit_action or continuation or looks_like_prose):
         return False
     if (re.match(r"^(what|who|which|why|where|how|is|are|does|did|can|"
                  r"could|would|should)\b", prompt)
-            and not explicit_action):
+            and not (explicit_action or continuation)):
         return False
-    if "?" in prompt and not explicit_action and not continuation:
+
+    # The model's ACTUAL output must be a scene, not an analysis of one.
+    # This prevents an accidental analysis response from becoming story canon.
+    if re.match(r"^\s*(?:#{1,4}\s*)?"
+                r"(?:analysis|scene analysis|summary|outline|"
+                r"character profile|here(?:'s| is) (?:an? )?(?:analysis|summary))\b",
+                scene, re.I):
         return False
-    return explicit_action or continuation
+    if explicit_action or continuation:
+        return True
+
+    # Authors also paste an existing scene without an explicit instruction.
+    # Accept it as narrative only when both prompt and response are long prose,
+    # not a short question or a reference note.
+    if len(prompt) >= 400 and len(scene) >= 400:
+        has_prose = (scene.count(".") >= 5 and
+                     (scene.count("\n") >= 2 or
+                      scene.count('"') >= 2 or scene.count("“") >= 2))
+        return has_prose
+    return False
 
 
 def build_catchup_state(project, jobid, docs, summaries=()):

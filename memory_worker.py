@@ -50,6 +50,13 @@ For each change return:
  "evidence_numbers": [1],
  "confidence": "high"}
 ONLY output changes supported by specific numbered sentences from the provided scene.
+The evidence_numbers MUST include a sentence that explicitly NAMES the claimed person
+or object AND states the supporting fact. If the source only says "she" or "they",
+cite an additional numbered sentence that clearly identifies that person.
+Do not attribute an unnamed stranger's species, motives, message or actions to
+Demi, the Director, or another character simply because their name occurs elsewhere.
+Do not turn suspicion, apparent guilt or a character's accusation into established fact.
+Prefer an empty changes array over an unsupported or misattributed claim.
 The evidence_numbers list must contain the numbers of the original sentences supporting
 this fact, and can use two sentences if a later sentence confirms permanence.
 Do not output evidence text, only numeric sentence indexes. If unsure, output [].
@@ -271,6 +278,52 @@ def confirm_anchors(fact, evidence):
     return True
 
 
+def evidence_supports_claim(entity, fact, evidence):
+    """Only accept facts directly supported by a passage naming the entity.
+
+    The small model sometimes attributes a quoted sentence about another
+    character to Demi or the Director. A free-floating quotation cannot be
+    trusted to establish someone's identity or motives.
+    """
+    source = evidence.casefold()
+    named = entity.casefold().strip()
+    if not named or not re.search(r"(?<!\w)" + re.escape(named) + r"(?!\w)", source):
+        return False
+    # When the named character is the OBSERVER, an injury or appearance
+    # belonging to the person they watch must not be assigned to them.
+    # Example: "The Director sized him up: a laser scar on his forearm."
+    observer = (r"(?<!\w)" + re.escape(named) +
+                r"\s+(?:sized|watched|observed|studied|looked|"
+                r"examined|noticed|saw|scanned)\b")
+    if (re.search(observer, source) and
+            re.search(r"\b(?:him|her|them|his|their)\b", source)):
+        return False
+    filler = {
+        "the", "and", "but", "for", "are", "was", "were", "has", "have",
+        "had", "his", "her", "their", "this", "that", "from", "with",
+        "into", "onto", "about", "after", "before", "being", "been",
+        "who", "which", "because", "there", "where", "then", "they",
+        "she", "him", "them", "one", "two", "its", "not", "can",
+        "character", "person", "known", "said"
+    }
+    names = set(re.findall(r"[a-z]{3,}", named))
+    claim_words = set(re.findall(r"[a-z]{3,}", fact.casefold())) - filler - names
+    evidence_words = set(re.findall(r"[a-z]{3,}", source))
+    def supported(word):
+        if word in evidence_words:
+            return True
+        if word == "permanent" and "permanently" in evidence_words:
+            return True
+        if word == "scar" and any(x.startswith("scar") for x in evidence_words):
+            return True
+        root = word[:-3] if word.endswith("ing") else (
+            word[:-2] if word.endswith("ed") else
+            word[:-1] if word.endswith("s") else word)
+        return len(root) >= 4 and any(x.startswith(root) for x in evidence_words)
+    return not claim_words or sum(supported(word) for word in claim_words) >= max(
+        1, (len(claim_words) * 3 + 4) // 5)
+
+
 def extract(scene):
     validated, rejected = [], []
     if not isinstance(scene, str) or not scene.strip():
@@ -312,7 +365,11 @@ def extract(scene):
                 rejected.append(("invalid category/length/confidence", fact[:150]))
                 continue
             if not confirm_anchors(fact, evidence):
-                rejected.append(("fact missing lexical support in indexed sentences", fact[:150]))
+                rejected.append(("fact missing anatomical/permanence anchors", fact[:150]))
+                continue
+            if not evidence_supports_claim(name, fact, evidence):
+                rejected.append(("named entity or factual detail unsupported by cited evidence",
+                                 fact[:150]))
                 continue
             if name.lower() not in scene.lower():
                 rejected.append(("entity not in scene", fact[:150]))
@@ -328,6 +385,26 @@ def extract(scene):
         key = (normalize(item["entity"]), normalize(item["fact"]))
         unique.setdefault(key, item)
     return list(unique.values()), rejected
+
+
+def archive_generated_scene(project, exchange_id, scene):
+    """Keep the actual written scene, even when fact extraction rejects it.
+
+    Reference excerpts are retrievable by the Jan gateway. They are source
+    material, not unverified AI-generated factual summaries.
+    """
+    root = (Path(project["folder"]) / ".storyteller" / "memory" /
+            "reference-notes" / ("generated-" + exchange_id[:20]))
+    root.mkdir(parents=True, exist_ok=True)
+    for index, chunk in enumerate(split_scene(scene, max_size=2500), 1):
+        path = root / f"section-{index:06d}.md"
+        if path.exists():
+            continue
+        temp = path.with_suffix(".tmp")
+        temp.write_text(
+            "# Completed fictional scene / section " + str(index) + "\n\n" +
+            chunk, encoding="utf-8")
+        os.replace(temp, path)
 
 
 def append_event(memory, project_alias, exchange_id, item):
@@ -493,20 +570,31 @@ class Worker:
                 if not isinstance(scene, str) or not scene:
                     continue
                 identifier = hashlib.sha256(line.encode()).hexdigest()
-                if db.execute("SELECT 1 FROM processed WHERE id=?", (identifier,)).fetchone():
+                prior = db.execute("SELECT status FROM processed WHERE id=?",
+                                   (identifier,)).fetchone()
+                # Previously skipped scenes may have been misclassified by an
+                # older version. Recheck ONLY skipped rows using the current
+                # classifier; already processed canon is never duplicated.
+                if prior and prior[0] != "skipped":
                     continue
-                # Do not turn short answers to factual questions into canon.
-                # They may be hallucinated responses rather than newly written scenes.
                 user_prompt = exchange.get("last_user_message", "")
                 if not isinstance(user_prompt, str):
                     user_prompt = ""
                 if not story_state.is_narrative_exchange(user_prompt, scene):
-                    db.execute("INSERT INTO processed VALUES (?, ?, ?, ?, ?)",
-                               (identifier, "skipped", 0, "short or non-narrative response", iso_now()))
-                    db.commit()
+                    if not prior:
+                        db.execute("INSERT INTO processed VALUES (?, ?, ?, ?, ?)",
+                                   (identifier, "skipped", 0, "short or non-narrative response", iso_now()))
+                        db.commit()
                     continue
+                if prior:
+                    db.execute("DELETE FROM processed WHERE id=?", (identifier,))
+                    db.commit()
+                    log(f"{project['alias']}: recovering previously skipped narrative scene")
                 log(f"{project['alias']}: examining completed scene ({len(scene)} characters)")
                 try:
+                    # Archive the exact scene first: even imperfect 2B analysis
+                    # cannot cause the written source material to be lost.
+                    archive_generated_scene(project, identifier, scene)
                     changes, rejects = extract(scene)
                     count = apply_changes(project, identifier, changes)
                     if rejects:

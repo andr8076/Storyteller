@@ -1,4 +1,4 @@
-# Storyteller 0.6 — Local story memory for Jan
+# Storyteller 0.7.1 — Local story memory for Jan
 
 Storyteller acts as a small OpenAI-compatible gateway between Jan's chat UI and Jan's own Local API Server. It is **not** another chat application.
 
@@ -8,6 +8,26 @@ Storyteller acts as a small OpenAI-compatible gateway between Jan's chat UI and 
 - **No service:** starts with a terminal and stops when that terminal closes.
 - **No cloud:** all model endpoints bind to `127.0.0.1`.
 - **Original chapters:** never edited.
+
+## What normal chat saves
+
+In normal writing mode, Storyteller records completed **fictional scenes generated
+by the writing model**. It saves exact scene text in
+`.storyteller/memory/reference-notes/generated-*/`, so important details remain
+searchable even when the 2B memory model fails to extract structured facts.
+The small CPU model also proposes character and world updates, but facts are
+accepted only when the cited original sentences support them. Rejected
+suggestions go to `.storyteller/review.jsonl`; no claim is made that every
+fact can be extracted reliably.
+
+A pre-existing chapter pasted as a **user message** in an ordinary Jan chat
+is not automatically imported as canon. Use **Catch Up (C)** for existing
+history, or **Dump Info (I)** to catalogue author-provided facts. Both process
+the text directly, without asking Cydonia to rewrite it.
+
+Storyteller ignores chat titles, scene analyses, and factual Q&A for automatic
+canon updates. Scenes skipped by older detector versions are safely reconsidered
+after upgrading, without duplicating previously verified entries.
 
 ## Optional prompt prefix and suffix (v0.7)
 

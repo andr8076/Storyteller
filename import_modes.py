@@ -267,6 +267,10 @@ def validate_records(response, text, whole_file, mode):
             rejected.append({"reason": "detail not supported by cited sentences",
                              "detail": fact[:180]})
             continue
+        if not generic and not mem.evidence_supports_claim(entity, fact, evidence):
+            rejected.append({"reason": "named entity or fact unsupported by source",
+                             "detail": fact[:180]})
+            continue
         # Protect common role/relationship assertions: boarding a ship does
         # not itself make someone its commander or stationed crew.
         unsupported_roles = ("commander", "stationed", "married", "husband",
