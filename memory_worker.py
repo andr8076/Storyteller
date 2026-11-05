@@ -137,6 +137,14 @@ def speculative_evidence(evidence):
     return False
 
 
+def perspective_statement(fact):
+    """A mental-state report is not an identity, appearance or world property."""
+    return bool(re.search(
+        r"\b(suspect(?:s|ed)?|discover(?:s|ed)?|learn(?:s|ed)?|"
+        r"believ(?:e|es|ed)|confirm(?:s|ed)?|realiz(?:e|es|ed)|"
+        r"recogniz(?:e|es|ed)|knows?|knew|thought)\b", fact, re.I))
+
+
 def minimal_evidence(sentences, refs, fact):
     """Reduce overlong model citations to <=3 source sentences, or reject.
 
@@ -395,8 +403,7 @@ def extract(scene, *, include_knowledge=False):
                 or confidence != "high"):
                 rejected.append(("invalid category/length/confidence", fact[:150]))
                 continue
-            if category != "event" and re.search(
-                    r"\b(suspected|discovered|learned|believed)\b", fact, re.I):
+            if category != "event" and perspective_statement(fact):
                 rejected.append(("character perspective is not a durable identity fact", fact[:150]))
                 continue
             if not confirm_anchors(fact, evidence):

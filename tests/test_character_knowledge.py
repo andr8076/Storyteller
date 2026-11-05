@@ -114,6 +114,15 @@ class PerspectiveExperiment(unittest.TestCase):
         self.assertEqual(canon, [])
         self.assertEqual(rows[0]["fact"], "The signal came from the tower")
 
+    def test_import_rejects_confirmed_knowledge_as_identity(self):
+        source = "Later, Nera discovered the signal came from the tower."
+        response = {"changes": [{"entity": "Nera", "category": "identity",
+                    "fact": "Nera later confirmed the signal came from the tower",
+                    "evidence_numbers": [1], "confidence": "high"}]}
+        canon, rejected, _ = import_modes.validate_records(response, source, source, "catchup")
+        self.assertEqual(canon, [])
+        self.assertTrue(rejected)
+
     def test_topic_variants_link_without_merging_another_belief(self):
         with tempfile.TemporaryDirectory() as folder:
             project = {"alias": "fiction", "folder": folder}
