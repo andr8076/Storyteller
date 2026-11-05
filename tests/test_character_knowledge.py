@@ -142,6 +142,85 @@ class PerspectiveExperiment(unittest.TestCase):
         self.assertEqual(rejected, [])
         self.assertEqual(len(accepted), 1)
 
+    def test_adjacent_pronoun_discovery_links_to_single_named_subject(self):
+        source = ("Lena hid the key in the cellar. She told him, 'The key is in the attic.' "
+                  "Dorian believed her and searched the attic. Later, he found the key in the cellar.")
+        numbered = mem.split_sentences(source)
+        self.assertEqual(len(numbered), 3)
+        response = {"knowledge_changes": [
+            {"character": "Dorian", "topic": "key location", "fact": "The key is in the attic",
+             "certainty": "believes", "evidence_numbers": [2]},
+            {"character": "Dorian", "topic": "key location", "fact": "The key is in the cellar",
+             "certainty": "knows", "evidence_numbers": [3]}]}
+        accepted, rejected = knowledge.validate(response, source)
+        self.assertEqual(rejected, [])
+        self.assertEqual([r["certainty"] for r in accepted], ["believes", "knows"])
+        self.assertIn("Dorian believed her", accepted[1]["evidence"])
+        self.assertIn("he found the key", accepted[1]["evidence"])
+
+    def test_pronoun_with_competing_person_is_not_attributed(self):
+        response = {"knowledge_changes": [{"character": "Dorian", "topic": "key location",
+            "fact": "The key is in the cellar", "certainty": "knows", "evidence_numbers": [2]}]}
+        for prior in ("Dorian met Marcus.", "Dorian met the guard.",
+                      "The guard saw Dorian."):
+            accepted, rejected = knowledge.validate(response,
+                prior + " He found the key in the cellar.")
+            self.assertEqual(accepted, [], prior)
+            self.assertTrue(rejected)
+
+    def test_belief_cannot_borrow_a_different_sentence_truth(self):
+        source = ("Lena hid the key in the cellar. "
+                  "She told Dorian, 'The key is in the attic.' Dorian believed her.")
+        wrong = {"character": "Dorian", "topic": "key location",
+                 "fact": "The key is in the cellar", "certainty": "believes",
+                 "evidence_numbers": [1, 2]}
+        accepted, rejected = knowledge.validate({"knowledge_changes": [wrong]}, source)
+        self.assertEqual(accepted, [])
+        self.assertTrue(rejected)
+
+    def test_model_output_order_cannot_rewind_current_belief(self):
+        source = ("Ivo suspected the vault was beneath the lake. "
+                  "Later, Ivo discovered the vault was beneath the lake.")
+        response = {"knowledge_changes": [
+            {"character": "Ivo", "topic": "vault location", "fact": "The vault was beneath the lake",
+             "certainty": "knows", "evidence_numbers": [2]},
+            {"character": "Ivo", "topic": "vault location", "fact": "The vault was beneath the lake",
+             "certainty": "suspects", "evidence_numbers": [1]}]}
+        accepted, rejected = knowledge.validate(response, source)
+        self.assertEqual(rejected, [])
+        self.assertEqual([item["certainty"] for item in accepted], ["suspects", "knows"])
+        with tempfile.TemporaryDirectory() as folder:
+            project = {"alias": "fiction", "folder": folder}
+            knowledge.record(project, "scene-1", accepted)
+            self.assertEqual(knowledge.current(project)[0]["certainty"], "knows")
+
+    def test_dialogue_belief_then_pronoun_discovery_survive_combination(self):
+        source = ("Lena put the brass key in the cellar before Dorian entered. "
+                  "She told him, 'The key is in the attic.' Dorian believed her and searched the attic. "
+                  "Later, he found the key in the cellar and realized she had lied.")
+        rows = {"knowledge_changes": [
+            {"character": "Lena", "topic": "key location", "fact": "The key is in the cellar",
+             "certainty": "knows", "evidence_numbers": [1]},
+            {"character": "Dorian", "topic": "key location", "fact": "The key is in the attic",
+             "certainty": "believes", "evidence_numbers": [2]},
+            {"character": "Dorian", "topic": "key location", "fact": "The key is in the cellar",
+             "certainty": "knows", "evidence_numbers": [3]}]}
+        model, rejected = knowledge.validate(rows, source)
+        combined = knowledge.combine(model, knowledge.explicit_perspectives(source))
+        self.assertEqual(len(rejected), 1)  # Lena's placement does not prove her knowledge.
+        self.assertEqual([r["certainty"] for r in combined], ["believes", "knows"])
+        with tempfile.TemporaryDirectory() as folder:
+            project = {"alias": "fiction", "folder": folder}
+            self.assertEqual(knowledge.record(project, "catchup-1", combined), 2)
+            state = knowledge.current(project)
+            self.assertEqual(len(state), 1)
+            self.assertEqual((state[0]["certainty"], state[0]["fact"]),
+                             ("knows", "The key is in the cellar"))
+            injection, _ = storyteller.select_memory(
+                project, [{"role": "user", "content": "Where does Dorian think the key is now?"}])
+            self.assertIn("Dorian knows: The key is in the cellar", injection)
+            self.assertNotIn("Dorian believes:", injection)
+
     def test_topic_variants_link_without_merging_another_belief(self):
         with tempfile.TemporaryDirectory() as folder:
             project = {"alias": "fiction", "folder": folder}

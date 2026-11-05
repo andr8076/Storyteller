@@ -13,6 +13,38 @@ TOPIC_FILLER = {"the", "a", "an", "of", "in", "on", "at", "where", "what", "is",
 MENTAL_VERBS = (r"knows?|knew|learned|discovered|realized|recognised|recognized|"
                 r"suspects?|suspected|believes?|believed|assumes?|assumed|"
                 r"overheard|heard|saw|read|was told|forgot|denies?|denied")
+STATE_VERBS = {
+    "knows": r"knows?|knew|learned|discovered|realized|recognised|recognized|saw|read|found",
+    "suspects": r"suspects?|suspected",
+    "believes": r"believes?|believed|assumes?|assumed|was told",
+    "believes_wrongly": r"believes?|believed|assumes?|assumed",
+    "denies": r"denies?|denied",
+    "forgotten": r"forgot|forgotten",
+}
+
+
+def _named_cue(character, certainty, sentence):
+    name = r"(?<!\w)" + re.escape(character) + r"(?!\w)"
+    return bool(re.search(
+        rf"{name}(?:\s+\w+){{0,3}}\s+(?:{STATE_VERBS[certainty]})\b", sentence, re.I))
+
+
+def _adjacent_pronoun_clause(character, certainty, previous, sentence):
+    """Bind an immediately following pronoun only to one named prior subject."""
+    if certainty != "knows":
+        return None
+    other_names = set(re.findall(r"\b[A-Z][a-z]+\b", previous)) - {
+        character, "She", "He", "They", "The", "A", "An", "Later", "Then", "At"}
+    if other_names or not re.search(rf"(?<!\w){re.escape(character)}\s+[a-z]+\b", previous):
+        return None
+    if re.search(rf"(?<!\w){re.escape(character)}\b[^.!?]*\b(?:guard|man|woman|boy|girl|person|stranger)\b",
+                 previous, re.I):
+        return None
+    match = re.match(r"\s*(?:(?:Later|Then|Soon|Afterward),?\s+)?(he|she|they)\s+"
+                     r"(found|saw|learned|discovered|realized|recognized|knew)\b", sentence, re.I)
+    if not match:
+        return None
+    return sentence[:match.start(1)] + character + sentence[match.end(1):]
 
 
 def validate(response, text, *, limit=12):
@@ -44,20 +76,23 @@ def validate(response, text, *, limit=12):
                 or mem.perspective_statement(fact)):
             rejected.append("knowledge fact must be a self-contained proposition")
             continue
-        evidence = " ".join(sentences[i - 1] for i in refs)
-        name = re.escape(character)
-        named = r"(?<!\w)" + name + r"(?!\w)"
-        # The owner of a belief must be explicit; mere presence in a scene is
-        # insufficient. A second sentence may establish its content.
-        cue = (rf"{named}(?:\s+\w+){{0,3}}\s+(?:{MENTAL_VERBS})\b|"
-               rf"\btold\s+{named}\b")
-        if (not re.search(cue, evidence, re.I)
-                or not mem.evidence_supports_claim(character, fact, evidence,
+        cited = [sentences[i - 1] for i in refs]
+        evidence = " ".join(cited)
+        grounded = any(_named_cue(character, certainty, sentence) and
+                       mem.evidence_supports_claim(character, fact, sentence,
                                                    observer_guard=False)
-                or len(evidence) > 900):
+                       for sentence in cited)
+        if not grounded and len(refs) == 1 and refs[0] > 1:
+            prior = sentences[refs[0] - 2]
+            resolved = _adjacent_pronoun_clause(character, certainty, prior, cited[0])
+            if resolved and mem.evidence_supports_claim(character, fact, resolved,
+                                                        observer_guard=False):
+                grounded = True
+                evidence = prior + " " + cited[0]
+        if not grounded or len(evidence) > 900:
             rejected.append("perspective or content not explicit in cited evidence")
             continue
-        if certainty == "knows" and re.search(rf"{named}\s+(?:did not|never|could not)\s+know", evidence, re.I):
+        if certainty == "knows" and re.search(rf"(?<!\w){re.escape(character)}\s+(?:did not|never|could not)\s+know", evidence, re.I):
             rejected.append("negated knowledge")
             continue
         if certainty == "believes_wrongly" and not re.search(
@@ -72,7 +107,9 @@ def validate(response, text, *, limit=12):
                 rejected.append("belief content taken from the correction rather than the character")
                 continue
         accepted.append({"character": character, "topic": topic, "fact": fact,
-                         "certainty": certainty, "evidence": evidence})
+                         "certainty": certainty, "evidence": evidence,
+                         "source_order": max(refs)})
+    accepted.sort(key=lambda item: item["source_order"])
     return accepted, rejected
 
 
@@ -117,13 +154,16 @@ def explicit_perspectives(text):
 
 
 def combine(model_entries, explicit_entries):
-    """Prefer literal clause extraction for the same character and topic."""
+    """Prefer literal extraction only for the same state in the same sentence."""
     selected = list(explicit_entries)
-    explicit_keys = {(row["character"].casefold(), row["topic"].casefold()) for row in selected}
+    explicit_keys = {(row["character"].casefold(), row["topic"].casefold(),
+                      row["source_order"]) for row in selected}
     for row in model_entries:
-        key = (row["character"].casefold(), row["topic"].casefold())
+        key = (row["character"].casefold(), row["topic"].casefold(),
+               row["source_order"])
         if key not in explicit_keys:
             selected.append(row)
+    selected.sort(key=lambda item: item.get("source_order", 0))
     return selected
 
 

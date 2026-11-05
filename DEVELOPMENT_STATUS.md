@@ -1,7 +1,7 @@
 # Development status
 
 ## Current objective
-Improve character-specific knowledge extraction from dialogue and pronouns without promoting unsupported beliefs.
+Improve source-backed character knowledge chronology across dialogue, pronouns, import, and retrieval.
 
 ## Verified implementation
 - The Jan gateway, import modes, and memory worker remain in place. No runtime or project migration was performed.
@@ -23,12 +23,13 @@ Improve character-specific knowledge extraction from dialogue and pronouns witho
 - Dialogue/pronoun probe on Build-Arch: Qwen3.5-2B returned no knowledge for two short prose scenes. The literal fallback incorrectly saved “Dorian believed her and searched…” as a belief about “her,” and included Cyra's clause in Ari's suspicion. It now skips pronoun-only propositions and cuts at contrasting clauses.
 - Existing Qwen3.5-9B-Q4_K_M on CPU: joint prompt found Ari/Cyra but prematurely assigned Dorian the true location. A dedicated perspective-only prompt produced the correct raw belief sequence in two unrelated scenes with Storyteller's own sentence numbering (about 10.7 and 14.8 seconds per call). The validator accepts both Joss states in the map scene and Dorian's earlier attic belief; it rejects Lena's implicit knowledge and Dorian's later pronoun-only discovery in the key scene. The model is more capable but an automatic switch would add substantial latency and still leave pronoun attribution unresolved.
 - The knowledge validator no longer applies the world-fact observer guard when a character explicitly sees something and gains knowledge. 30 unit tests pass in the development checkout.
+- The current change binds a nearby pronoun discovery to a uniquely named preceding subject, checks fact content against the cited clause, and sorts states by source sentence before recording. The combination step retains later model-derived states after an earlier literal state for the same topic. A fixture based on the local 9B model's actual key-scene output rejects an inferred Lena state, records Dorian's attic belief and later cellar discovery, and retrieves only his current knowledge. Ambiguous antecedents are rejected. 19 focused tests pass.
 - Retrieval remains lexical; paraphrases without overlapping terms can be missed. Canon, summary, and source excerpts still use their existing ranking and truncation rules.
 - Existing tests do not yet cover the full gateway and import path.
 - Existing completed imports are not backfilled into the new knowledge ledger; their original sources remain intact. The current grouping uses model-proposed topic strings, so paraphrased topics may form separate histories until entity/topic reconciliation improves.
 - Qwen3.5-2B is unreliable for perspective extraction from short isolated sentences. Literal fallback covers simple declarative constructions, while complex dialogue, pronouns, and indirect knowledge still depend on model quality.
-- A model's evidence number may cite only a pronoun sentence. Do not accept that state until a source-backed antecedent can be established. The model's raw chronology and the ledger's accepted chronology must be evaluated separately.
+- The adjacent pronoun rule only handles a clearly named prior subject and an immediate discovery sentence. More complex dialogue and cross-section antecedents remain unresolved. The earlier 9B output was reused as a deterministic fixture; this change has not yet been rerun through a live 9B import.
 - Relevant commits: `30a49ff` profile retrieval; `be11f47` append-only knowledge experiment; `dd2fcfe` topic reconciliation. Data Dump baseline support is the current work.
 
 ## Next action
-Prototype evidence-backed antecedent resolution for adjacent pronoun sentences and test it against ambiguous cases. Then assess selective 9B perspective extraction for dialogue-heavy sections, rather than switching all imports to 9B. Finally check Jan/Cydonia injection and a modest Sparkdrive excerpt before any broad import or migration.
+Prototype an optional, selective local 9B perspective pass for dialogue-heavy Catch Up sections, compare it with the 2B baseline on unrelated scenes, and bound the added latency. Then check Jan/Cydonia injection and a modest Sparkdrive excerpt before any broad import.
