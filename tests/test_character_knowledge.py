@@ -96,6 +96,24 @@ class PerspectiveExperiment(unittest.TestCase):
         self.assertEqual((discovery[0]["topic"], discovery[0]["certainty"]),
                          ("vault location", "knows"))
 
+    def test_adverbial_scene_prefix_recovers_proposition_not_mental_verb(self):
+        scene = ("At the observatory, Nera suspected the signal came from the tower. "
+                 "Later, Nera discovered the signal came from the tower.")
+        rows = knowledge.explicit_perspectives(scene)
+        self.assertEqual([(r["topic"], r["certainty"]) for r in rows],
+                         [("signal source", "suspects"), ("signal source", "knows")])
+        self.assertTrue(all(r["fact"] == "The signal came from the tower" for r in rows))
+
+    def test_model_identity_misclassification_does_not_pollute_canon(self):
+        scene = "Nera discovered the signal came from the tower."
+        response = {"changes": [{"entity": "Nera", "category": "identity",
+                    "fact": "Nera discovered the signal came from the tower",
+                    "evidence_numbers": [1], "confidence": "high"}]}
+        with patch.object(mem, "request_json", return_value=response):
+            canon, _, rows = mem.extract(scene, include_knowledge=True)
+        self.assertEqual(canon, [])
+        self.assertEqual(rows[0]["fact"], "The signal came from the tower")
+
     def test_topic_variants_link_without_merging_another_belief(self):
         with tempfile.TemporaryDirectory() as folder:
             project = {"alias": "fiction", "folder": folder}

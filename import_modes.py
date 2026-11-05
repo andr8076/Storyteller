@@ -268,6 +268,10 @@ def validate_records(response, text, whole_file, mode):
             rejected.append({"reason": "invalid category, length or confidence",
                              "detail": fact[:180]})
             continue
+        if category != "event" and re.search(
+                r"\b(suspected|discovered|learned|believed)\b", fact, re.I):
+            rejected.append({"reason": "perspective proposed as world canon", "detail": fact[:180]})
+            continue
         # The model may use generic subject labels for universe rules.
         generic = category in ("world", "technology", "place", "event") and entity.lower() in (
             "universe", "world", "setting", "story", "timeline")

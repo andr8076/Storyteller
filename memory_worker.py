@@ -395,6 +395,10 @@ def extract(scene, *, include_knowledge=False):
                 or confidence != "high"):
                 rejected.append(("invalid category/length/confidence", fact[:150]))
                 continue
+            if category != "event" and re.search(
+                    r"\b(suspected|discovered|learned|believed)\b", fact, re.I):
+                rejected.append(("character perspective is not a durable identity fact", fact[:150]))
+                continue
             if not confirm_anchors(fact, evidence):
                 rejected.append(("fact missing anatomical/permanence anchors", fact[:150]))
                 continue

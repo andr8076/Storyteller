@@ -79,12 +79,12 @@ def explicit_perspectives(text):
     import memory_worker as mem
     rows = []
     pattern = re.compile(
-        r"^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+"
+        r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+"
         r"(?:(wrongly|mistakenly)\s+)?"
         r"(suspected|suspects|discovered|learned|realized|recognised|recognized|"
         r"knew|knows|believed|believes)\s+(?:that\s+)?(.+)$")
     for number, sentence in enumerate(mem.split_sentences(text), 1):
-        match = pattern.match(sentence.strip())
+        match = pattern.search(sentence.strip())
         if not match:
             continue
         character, wrong, verb, proposition = match.groups()
@@ -97,7 +97,8 @@ def explicit_perspectives(text):
         if not subject:
             continue
         anchor = (subject.group(1) or subject.group(2)).lower()
-        kind = ("location" if re.search(r"\b(beneath|under|inside|behind|located|hidden|in|at)\b",
+        kind = ("source" if re.search(r"\b(?:came\s+from|originated\s+from)\b", proposition, re.I) else
+                "location" if re.search(r"\b(beneath|under|inside|behind|located|hidden|in|at)\b",
                                         proposition, re.I) else "state")
         certainty = ("suspects" if verb.startswith("suspect") else
                      "believes_wrongly" if wrong or re.search(r"\b(?:in fact|actually)\b", sentence, re.I) else
