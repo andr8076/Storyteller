@@ -22,6 +22,7 @@ from memory_worker import Worker
 import story_state
 import prompt_mode
 import prompt_affixes
+import memory_retrieval
 
 ROOT = Path(__file__).resolve().parent
 CONFIG = Path(os.environ.get("STORYTELLER_CONFIG", ROOT / "projects.json"))
@@ -140,6 +141,7 @@ def select_memory(project, messages):
         if path.is_file() and not path.is_symlink():
             files.append(path)
     scored = []
+    profile_bodies = {}
     for sub in ("characters", "world"):
         folder = root / sub
         if not folder.is_dir():
@@ -148,9 +150,14 @@ def select_memory(project, messages):
             if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()):
                 continue
             title = path.stem.replace("-", " ").replace("_", " ")
-            matches = len(current & terms(title))
-            if matches:
-                scored.append((matches, path))
+            try:
+                body = path.read_text(encoding="utf-8", errors="replace").strip()
+            except OSError:
+                continue
+            score = memory_retrieval.profile_score(title, body, current, terms)
+            if score:
+                scored.append((score, path))
+                profile_bodies[path] = body
     scored.sort(key=lambda pair: (-pair[0], pair[1].name))
     # Raw excerpts from Catch Up and Dump Info retain details the 2B model
     # might miss. Retrieve only a few relevant excerpts, not the entire archive.
@@ -193,7 +200,9 @@ def select_memory(project, messages):
             selected.append("project-state/" + project["alias"] + "/story-state.md")
             remaining -= len(snippet)
     for path in files:
-        body = path.read_text(encoding="utf-8", errors="replace").strip()
+        body = profile_bodies.get(path)
+        if body is None:
+            body = path.read_text(encoding="utf-8", errors="replace").strip()
         if not body:
             continue
         # Reserve context for relevant character files and original source notes.
@@ -210,7 +219,9 @@ def select_memory(project, messages):
             limit = 2300
         else:
             limit = 1900
-        snippet = body[:min(remaining, limit)]
+        budget = min(remaining, limit)
+        snippet = (memory_retrieval.profile_excerpt(body, current, terms, budget)
+                   if path in profile_bodies else body[:budget])
         if not snippet:
             break
         parts.append(f"### {path.relative_to(root)}\n{snippet}")
