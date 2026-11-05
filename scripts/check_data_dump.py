@@ -117,7 +117,11 @@ def main():
             rows = [json.loads(line) for line in events.read_text().splitlines()] if events.exists() else []
             for row in rows:
                 # Exact quotations can span separately numbered sentences.
-                assert all(part in ' '.join(text.split()) for part in [' '.join(row['evidence'].split())]), row
+                assert all(' '.join(part.split()) in ' '.join(text.split())
+                           for part in row['evidence'].splitlines() if part.strip()), row
+            if label == 'unrelated':
+                expected = {part.strip() for part in text.split('.') if part.strip()}
+                assert {row['fact'].rstrip('.') for row in rows} == expected, rows
             assert not (memory / 'recent-events.md').exists()
             prior = events.read_bytes() if events.exists() else b''
             assert request('POST', '/v1/chat/completions', payload)[0] == 200

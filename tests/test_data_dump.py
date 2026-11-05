@@ -2,6 +2,7 @@
 import http.client
 from concurrent.futures import ThreadPoolExecutor
 import json
+import io
 from pathlib import Path
 import tempfile
 import threading
@@ -188,6 +189,90 @@ class ImportTests(ProjectCase):
         self.assertEqual(len(rejected), 1)
         self.assertEqual(valid[0]['evidence'], 'Nera has silver eyes.')
 
+    def test_causal_paraphrase_and_reversed_negation_are_rejected(self):
+        source = 'The Beacon glows red. The sky darkens. The Beacon cannot open gates.'
+        raw = {'changes': [
+            dict(entity='Beacon', category='technology', fact='The Beacon glows red, causing the sky to darken', evidence_numbers=[1, 2]),
+            dict(entity='Beacon', category='technology', fact='The Beacon can open gates', evidence_numbers=[3])
+        ]}
+        valid, rejected, _ = import_modes.validate_records(raw, source, source, 'dump')
+        self.assertEqual(valid, [])
+        self.assertEqual(len(rejected), 2)
+
+    def test_heading_scoped_reference_fact_keeps_source_attribution(self):
+        source = '### Nera\n\nAppearance\n\n- Has silver eyes.\n\n### Orin\n\n- Has blue eyes.'
+        sentences = memory_worker.split_sentences(source)
+        silver = next(i for i, sentence in enumerate(sentences, 1) if 'Has silver eyes' in sentence)
+        blue = next(i for i, sentence in enumerate(sentences, 1) if 'Has blue eyes' in sentence)
+        raw = {'changes': [
+            dict(entity='Nera', category='appearance', fact='Has silver eyes.', evidence_numbers=[silver]),
+            dict(entity='Nera', category='appearance', fact='Has blue eyes.', evidence_numbers=[blue]),
+        ]}
+        valid, rejected, _ = import_modes.validate_records(raw, source, source, 'dump')
+        self.assertEqual(len(valid), 1)
+        self.assertEqual(valid[0]['fact'], 'Has silver eyes.')
+        self.assertIn('Nera', valid[0]['evidence'])
+        self.assertEqual(len(rejected), 1)
+
+    def test_statement_selection_copies_source_and_rejects_invalid_indexes(self):
+        source = 'Nera cannot open gates. Orin owns a telescope.'
+        raw = {'changes': [dict(entity='Nera', category='status', source_statement=1),
+                           dict(entity='Nera', category='status', source_statement=True),
+                           dict(entity='Orin', category='possession', source_statement=99)]}
+        valid, rejected, _ = import_modes.validate_records(raw, source, source, 'dump')
+        self.assertEqual([row['fact'] for row in valid], ['Nera cannot open gates.'])
+        self.assertEqual(len(rejected), 2)
+
+    def test_memory_transport_budget_and_truncated_output(self):
+        response = json.dumps({'choices': [{'finish_reason': 'length', 'message': {'content': '{'}}]})
+        with patch.object(import_modes, 'urlopen', return_value=io.StringIO(response)) as endpoint:
+            with self.assertRaisesRegex(ValueError, 'output limit'):
+                import_modes.request_model(import_modes.DUMP_MEMORY_PROMPT, '[1] Nera has silver eyes.')
+        sent = json.loads(endpoint.call_args.args[0].data)
+        self.assertEqual(sent['max_tokens'], 3072)
+        self.assertEqual(sent['model'], memory_worker.MODEL_NAME)
+        self.assertEqual(sent['response_format']['schema']['properties']['changes']['maxItems'], 12)
+        self.assertIn('[1] Nera has silver eyes.', sent['messages'][1]['content'])
+
+    def test_concurrent_memory_writers_do_not_lose_facts(self):
+        def save(number):
+            fact = dict(entity='Beacon', category='technology', fact=f'The Beacon has socket number {number}.',
+                        evidence=f'The Beacon has socket number {number}.', confidence='high')
+            memory_worker.apply_changes(self.project, f'import:dump:job-{number}', [fact], timeline=False)
+            import_modes.append_dump_global_facts(self.project, str(number), [fact], 'source')
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(save, range(16)))
+        memory = self.folder / '.storyteller/memory'
+        self.assertEqual(len((memory / 'events.jsonl').read_text().splitlines()), 16)
+        for number in range(16):
+            text = f'The Beacon has socket number {number}.'
+            self.assertEqual((memory / 'world/beacon.md').read_text().count(text), 1)
+            self.assertEqual((memory / 'canon.md').read_text().count(text), 1)
+        self.assert_position_unchanged()
+
+    def test_empty_update_completes_without_canon_changes(self):
+        prompt_mode.arm(self.project, 'dump')
+        task = prompt_mode.capture(self.project, 'Does Nera have silver eyes?')
+        with patch.object(memory_worker, 'is_healthy', return_value=True), patch.object(import_modes, 'request_model', return_value={'changes': [], 'summary': ''}):
+            result = import_modes.run_import(self.project, 'dump', task['source'])
+        self.assertEqual(result['state'], 'complete')
+        self.assertEqual(result['facts'], 0)
+        self.assertFalse((self.folder / '.storyteller/memory/events.jsonl').exists())
+        self.assert_position_unchanged()
+
+    def test_rearmed_import_does_not_duplicate_world_canon(self):
+        raw = {'changes': [dict(entity='Beacon', category='technology',
+                fact='The Beacon cannot open gates.', evidence_numbers=[1])]}
+        with patch.object(memory_worker, 'is_healthy', return_value=True), patch.object(import_modes, 'request_model', return_value=raw):
+            for _ in range(2):
+                prompt_mode.arm(self.project, 'dump')
+                task = prompt_mode.capture(self.project, 'The Beacon cannot open gates.')
+                import_modes.run_import(self.project, 'dump', task['source'])
+        memory = self.folder / '.storyteller/memory'
+        self.assertEqual(len((memory / 'events.jsonl').read_text().splitlines()), 1)
+        self.assertEqual((memory / 'canon.md').read_text().count('The Beacon cannot open gates.'), 1)
+        self.assert_position_unchanged()
+
     def test_outgoing_persistence_retry_and_resume(self):
         prompt_mode.arm(self.project, 'dump')
         task = prompt_mode.capture(self.project, LORE + '\n\n' + 'Orin owns a brass telescope. ' * 110)
@@ -200,6 +285,7 @@ class ImportTests(ProjectCase):
             result = import_modes.run_import(self.project, 'dump', task['source'])
             self.assertEqual(model.call_count, plan['sections'] - 1)
             self.assertEqual(result['state'], 'complete')
+            self.assertIsNone(result.get('error'))
             import_modes.run_import(self.project, 'dump', task['source'])
             self.assertEqual(model.call_count, plan['sections'] - 1)
         memory = self.folder / '.storyteller/memory'
