@@ -21,7 +21,6 @@ from pathlib import Path
 VALID_MODES = {"catchup", "dump"}
 MIN_CHARS = 20
 MAX_CHARS = 32 * 1024 * 1024
-RETRY_WINDOW = 180
 
 
 def now():
@@ -63,15 +62,19 @@ def atomic_write(path, data):
 
 def read_state(project):
     file = root(project) / "next-prompt.json"
-    if not file.is_file() or file.is_symlink():
+    if not file.exists() and not file.is_symlink():
         return {"armed": None, "last_capture": None}
-    try:
-        data = json.loads(file.read_text(encoding="utf-8"))
-        if isinstance(data, dict):
-            return data
-    except (OSError, ValueError):
-        pass
-    return {"armed": None, "last_capture": None}
+    if not file.is_file() or file.is_symlink():
+        raise ValueError("Invalid prompt mode state file; capture routing is blocked")
+    data = json.loads(file.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or "armed" not in data:
+        raise ValueError("Invalid prompt mode state; capture routing is blocked")
+    armed = data["armed"]
+    if armed is not None and (
+            not isinstance(armed, dict) or armed.get("mode") not in VALID_MODES
+            or not re.fullmatch(r"[a-f0-9]{24}", str(armed.get("token", "")))):
+        raise ValueError("Invalid armed import; capture routing is blocked")
+    return data
 
 
 def arm(project, mode):
@@ -122,16 +125,30 @@ def recent_task(project):
     return None
 
 
+def captured_tasks(project):
+    """Durable receipts are a routing boundary, so unreadable ones fail closed."""
+    folder = root(project) / "prompt-imports"
+    if not folder.exists():
+        return []
+    result = []
+    for path in sorted(folder.glob("*.json")):
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("Invalid import receipt; capture routing is blocked")
+        entry = json.loads(path.read_text(encoding="utf-8"))
+        if (not isinstance(entry, dict)
+                or entry.get("project_alias") != project["alias"]
+                or entry.get("mode") not in VALID_MODES
+                or entry.get("token") != path.stem
+                or not re.fullmatch(r"[a-f0-9]{24}", path.stem)
+                or not re.fullmatch(r"[a-f0-9]{64}", str(entry.get("prompt_hash", "")))):
+            raise ValueError("Invalid import receipt; capture routing is blocked")
+        result.append(entry)
+    return result
+
+
 def imported_prompt_hashes(project):
     """Known Jan prompt imports for filtering model conversation history."""
-    folder = root(project) / "prompt-imports"
-    result = set()
-    if folder.is_dir():
-        for path in folder.glob("*.json"):
-            entry = read_task(path)
-            if entry.get("project_alias") == project["alias"] and entry.get("prompt_hash"):
-                result.add(entry["prompt_hash"])
-    return result
+    return {entry["prompt_hash"] for entry in captured_tasks(project)}
 
 
 def pending_tasks(project):
@@ -196,11 +213,10 @@ def capture(project, text):
         state = read_state(project)
         armed = state.get("armed")
         if not armed:
-            last = state.get("last_capture") or {}
-            if (last.get("hash") == digest and
-                    time.time() - float(last.get("time", 0)) < RETRY_WINDOW):
-                task = read_task(task_path(project, last["token"]))
-                if task:
+            # A retry remains an import even after restart, another import,
+            # or a missing/edited acknowledgement in the Jan transcript.
+            for task in captured_tasks(project):
+                if task["prompt_hash"] == digest:
                     return {**task, "duplicate": True}
             return None
         if len(text.strip()) < MIN_CHARS:
@@ -231,3 +247,4 @@ def capture(project, text):
                                  "time": time.time()}
         atomic_write(folder / "next-prompt.json", json.dumps(state, indent=2) + "\n")
         return task
+

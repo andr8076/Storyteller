@@ -6,6 +6,8 @@ A structured model response is treated as untrusted input and validated
 against an exact quote from the completed assistant scene.
 """
 import hashlib
+import fcntl
+from contextlib import contextmanager
 from itertools import combinations
 import json
 import os
@@ -22,7 +24,9 @@ import story_state
 
 HOME = Path(__file__).resolve().parent
 MODEL_FILE = HOME / "models" / "qwen3.5-2b-Q4_K_M.gguf"
-MEMORY_PORT = 18885
+MEMORY_PORT = int(os.environ.get("STORYTELLER_MEMORY_PORT", "18885"))
+if not 1 <= MEMORY_PORT <= 65535:
+    raise ValueError("STORYTELLER_MEMORY_PORT must be between 1 and 65535")
 ENDPOINT = f"http://127.0.0.1:{MEMORY_PORT}/v1/chat/completions"
 MODEL_NAME = "qwen3.5-2b-Q4_K_M.gguf"
 CHARACTER_CATEGORIES = {"appearance", "injury", "identity", "status",
@@ -96,7 +100,7 @@ def complete_character_name(short_name, scene):
     """
     if len(short_name.split()) != 1:
         return short_name
-    pattern = r"\b" + re.escape(short_name) + r"\s+([A-Z][a-z]{1,30})\b"
+    pattern = r"\b" + re.escape(short_name) + r"[ \t]+([A-Z][a-z]{1,30})\b"
     matches = set(re.findall(pattern, scene))
     return short_name + " " + next(iter(matches)) if len(matches) == 1 else short_name
 
@@ -407,6 +411,18 @@ def archive_generated_scene(project, exchange_id, scene):
         os.replace(temp, path)
 
 
+@contextmanager
+def memory_lock(folder):
+    """Serialize read/modify/write operations across gateway/import processes."""
+    folder.mkdir(parents=True, exist_ok=True)
+    with (folder / '.memory-write.lock').open('a+b') as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
 def append_event(memory, project_alias, exchange_id, item):
     target = memory / "events.jsonl"
     stored = []
@@ -417,6 +433,12 @@ def append_event(memory, project_alias, exchange_id, item):
     event_id = hashlib.sha256((exchange_id + "|" + item["entity"] +
                                "|" + item["fact"]).encode()).hexdigest()[:20]
     if any(row.get("event_id") == event_id for row in stored):
+        return False
+    if exchange_id.startswith("import:dump:") and any(
+            str(row.get("source_exchange", "")).startswith("import:dump:")
+            and normalize(row.get("entity", "")) == normalize(item["entity"])
+            and normalize(row.get("fact", "")) == normalize(item["fact"])
+            for row in stored):
         return False
     entry = {"event_id": event_id, "source_exchange": exchange_id,
              "project": project_alias, "utc": iso_now(), **item}
@@ -484,6 +506,13 @@ def refresh_recent_events(memory, limit=25):
 def apply_changes(project, exchange_id, valid, *, timeline=True):
     memory = Path(project["folder"]) / ".storyteller" / "memory"
     memory.mkdir(parents=True, exist_ok=True)
+    with memory_lock(memory):
+        return apply_changes_unlocked(project, exchange_id, valid, timeline=timeline)
+
+
+def apply_changes_unlocked(project, exchange_id, valid, *, timeline=True):
+    """Caller must hold memory_lock; used for atomic Data Dump review/commit."""
+    memory = Path(project["folder"]) / ".storyteller" / "memory"
     changed = []
     for item in valid:
         if append_event(memory, project["alias"], exchange_id, item):
@@ -634,3 +663,4 @@ if __name__ == "__main__":
         scene = Path(args.scene).read_text(encoding="utf-8")
         changes, rejected = extract(scene)
         print(json.dumps({"changes": changes, "rejected": rejected}, indent=2, ensure_ascii=False))
+

@@ -105,22 +105,24 @@ def without_imported_history(project, messages):
     index = 0
     while index < len(messages):
         item = messages[index]
-        if (isinstance(item, dict) and item.get("role") == "user"
-                and index + 1 < len(messages)):
+        if isinstance(item, dict) and item.get("role") == "user":
             body = text_from_content(item.get("content"))
             digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
-            next_item = messages[index+1]
-            ack = (text_from_content(next_item.get("content"))
-                   if isinstance(next_item, dict) and next_item.get("role") == "assistant"
-                   else "")
-            if digest in hashes and (
-                ack.startswith("Catch Up: captured") or
-                ack.startswith("Dump Info: captured") or
-                ack.startswith("That Catch Up message was already captured") or
-                ack.startswith("That Dump Info message was already captured")
-            ):
-                index += 2
-                skipped += 2
+            if digest in hashes:
+                index += 1
+                skipped += 1
+                # A missing or edited acknowledgement must never expose the
+                # captured user text. Remove only our recognizable reply too.
+                if index < len(messages):
+                    reply = messages[index]
+                    ack = (text_from_content(reply.get("content"))
+                           if isinstance(reply, dict) and reply.get("role") == "assistant"
+                           else "")
+                    if ack.startswith(("Catch Up: captured", "Dump Info: captured",
+                                       "That Catch Up message was already captured",
+                                       "That Dump Info message was already captured")):
+                        index += 1
+                        skipped += 1
                 continue
         cleaned.append(item)
         index += 1
@@ -545,3 +547,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
