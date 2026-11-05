@@ -80,6 +80,15 @@ not an established location. Return [] when none. Keep topic stable when a
 character's certainty about the same proposition changes.
 Being told a claim does not prove it true; mark it believes unless the scene
 explicitly establishes the truth. A wrong belief needs an explicit correction.
+IMPORTANT: the ban on guesses and rumors applies to world 'changes' only.
+Explicit suspicion or a mistaken belief MUST go in knowledge_changes, even
+when changes is empty. Never use category 'knowledge' in changes.
+Scene: 'Ivo suspected the vault was beneath the lake.'
+{"changes":[],"knowledge_changes":[{"character":"Ivo","topic":"vault location",
+"fact":"The vault was beneath the lake","certainty":"suspects","evidence_numbers":[1]}]}
+Scene: 'Mara wrongly believed the gate was open, but in fact it was sealed.'
+{"changes":[],"knowledge_changes":[{"character":"Mara","topic":"gate state",
+"fact":"The gate was open","certainty":"believes_wrongly","evidence_numbers":[1]}]}
 Return valid JSON only. /no_think"""
 
 def iso_now():
@@ -358,7 +367,8 @@ def extract(scene, *, include_knowledge=False):
         results = response["changes"]
         if include_knowledge:
             found, problems = character_knowledge.validate(response, chunk)
-            perspectives.extend(found)
+            perspectives.extend(character_knowledge.combine(
+                found, character_knowledge.explicit_perspectives(chunk)))
             rejected.extend(("knowledge: " + reason, "") for reason in problems)
         for row in results[:18]:
             if not isinstance(row, dict):

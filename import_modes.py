@@ -65,6 +65,8 @@ a proposition in the original source. A rumor must never become a world fact.
 Use the same topic for later changes in certainty about the same proposition.
 Being told a claim does not establish its truth; use believes unless the text
 confirms it. Mark believes_wrongly only with an explicit correction.
+An explicit suspicion or mistaken belief belongs in knowledge_changes even
+when changes is empty; never promote it to established world canon.
 Capture up to 12 important distinct facts per section.
 Do not omit explicit appearance, equipment, personality or world rules.
 The surrounding summaries are context only, NEVER evidence.
@@ -499,7 +501,9 @@ def run_import(project, mode, source, plan=None):
                                         ", ".join(dict.fromkeys(known[-14:])))
                     valid, rejected, summary = validate_records(
                         raw, chunk, doc["text"], mode)
-                    perspectives, knowledge_rejected = character_knowledge.validate(raw, chunk)
+                    model_perspectives, knowledge_rejected = character_knowledge.validate(raw, chunk)
+                    perspectives = character_knowledge.combine(
+                        model_perspectives, character_knowledge.explicit_perspectives(chunk))
                     source_ref = f"import:{mode}:{jobid}:section:{section_number}"
                     count = mem.apply_changes(project, source_ref, valid,
                                               timeline=(mode == "catchup"))

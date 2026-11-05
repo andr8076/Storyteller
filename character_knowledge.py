@@ -59,9 +59,63 @@ def validate(response, text, *, limit=12):
                 r"\b(wrongly|mistaken(?:ly)?|in fact|actually|false)\b", evidence, re.I):
             rejected.append("incorrect belief lacks explicit correction")
             continue
+        if certainty == "believes_wrongly":
+            belief_clause = re.split(r"\b(?:but\s+in\s+fact|in\s+fact|but\s+actually|actually)\b",
+                                     evidence, maxsplit=1, flags=re.I)[0]
+            if not mem.evidence_supports_claim(character, fact, belief_clause):
+                rejected.append("belief content taken from the correction rather than the character")
+                continue
         accepted.append({"character": character, "topic": topic, "fact": fact,
                          "certainty": certainty, "evidence": evidence})
     return accepted, rejected
+
+
+def explicit_perspectives(text):
+    """Recover simple named mental states when the small model omits them.
+
+    This deliberately handles only a single explicit declarative clause. More
+    complex attributions are left to the model and evidence validator.
+    """
+    import memory_worker as mem
+    rows = []
+    pattern = re.compile(
+        r"^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+"
+        r"(?:(wrongly|mistakenly)\s+)?"
+        r"(suspected|suspects|discovered|learned|realized|recognised|recognized|"
+        r"knew|knows|believed|believes)\s+(?:that\s+)?(.+)$")
+    for number, sentence in enumerate(mem.split_sentences(text), 1):
+        match = pattern.match(sentence.strip())
+        if not match:
+            continue
+        character, wrong, verb, proposition = match.groups()
+        proposition = re.split(r"\s*,?\s*but\s+in\s+fact\b|\s*,?\s*but\s+actually\b|\s*;",
+                               proposition, maxsplit=1, flags=re.I)[0].strip(" .!?\"'")
+        if not 7 <= len(proposition) <= 260:
+            continue
+        fact = proposition[0].upper() + proposition[1:]
+        subject = re.match(r"(?:the|a|an)\s+([A-Za-z][\w-]*)|([A-Za-z][\w-]*)", proposition, re.I)
+        if not subject:
+            continue
+        anchor = (subject.group(1) or subject.group(2)).lower()
+        kind = ("location" if re.search(r"\b(beneath|under|inside|behind|located|hidden|in|at)\b",
+                                        proposition, re.I) else "state")
+        certainty = ("suspects" if verb.startswith("suspect") else
+                     "believes_wrongly" if wrong or re.search(r"\b(?:in fact|actually)\b", sentence, re.I) else
+                     "believes" if verb.startswith("believ") else "knows")
+        rows.append({"character": character, "topic": f"{anchor} {kind}",
+                     "fact": fact, "certainty": certainty, "evidence_numbers": [number]})
+    return validate({"knowledge_changes": rows}, text)[0]
+
+
+def combine(model_entries, explicit_entries):
+    """Prefer literal clause extraction for the same character and topic."""
+    selected = list(explicit_entries)
+    explicit_keys = {(row["character"].casefold(), row["topic"].casefold()) for row in selected}
+    for row in model_entries:
+        key = (row["character"].casefold(), row["topic"].casefold())
+        if key not in explicit_keys:
+            selected.append(row)
+    return selected
 
 
 def database(project):

@@ -77,6 +77,25 @@ class PerspectiveExperiment(unittest.TestCase):
         self.assertEqual(accepted, [])
         self.assertTrue(errors)
 
+    def test_correction_is_not_the_belief_and_literal_fallback_recovers_it(self):
+        source = "Mara wrongly believed the gate was open, but in fact it was sealed."
+        mistaken = {"character": "Mara", "topic": "gate state", "fact": "The gate was sealed",
+                    "certainty": "believes_wrongly", "evidence_numbers": [1]}
+        accepted, errors = knowledge.validate({"knowledge_changes": [mistaken]}, source)
+        self.assertEqual(accepted, [])
+        self.assertTrue(errors)
+        recovered = knowledge.explicit_perspectives(source)
+        self.assertEqual(recovered[0]["fact"], "The gate was open")
+        self.assertEqual(recovered[0]["certainty"], "believes_wrongly")
+
+    def test_missing_model_knowledge_recovers_suspicion_and_discovery(self):
+        suspicion = knowledge.explicit_perspectives("Ivo suspected the vault was beneath the lake.")
+        discovery = knowledge.explicit_perspectives("Ivo discovered the vault was beneath the lake.")
+        self.assertEqual((suspicion[0]["topic"], suspicion[0]["certainty"]),
+                         ("vault location", "suspects"))
+        self.assertEqual((discovery[0]["topic"], discovery[0]["certainty"]),
+                         ("vault location", "knows"))
+
     def test_topic_variants_link_without_merging_another_belief(self):
         with tempfile.TemporaryDirectory() as folder:
             project = {"alias": "fiction", "folder": folder}
