@@ -9,6 +9,7 @@ import sqlite3
 from pathlib import Path
 
 CERTAINTIES = {"knows", "suspects", "believes", "believes_wrongly", "denies", "forgotten"}
+TOPIC_FILLER = {"the", "a", "an", "of", "in", "on", "at", "where", "what", "is", "was"}
 MENTAL_VERBS = (r"knows?|knew|learned|discovered|realized|recognised|recognized|"
                 r"suspects?|suspected|believes?|believed|assumes?|assumed|"
                 r"overheard|heard|saw|read|was told|forgot|denies?|denied")
@@ -19,7 +20,10 @@ def validate(response, text, *, limit=12):
     import memory_worker as mem
     sentences = mem.split_sentences(text)
     accepted, rejected = [], []
-    for row in response.get("knowledge_changes", [])[:limit]:
+    rows = response.get("knowledge_changes", [])
+    if not isinstance(rows, list):
+        return [], ["knowledge_changes must be an array"]
+    for row in rows[:limit]:
         if not isinstance(row, dict):
             rejected.append("non-object knowledge suggestion")
             continue
@@ -81,19 +85,48 @@ def record(project, source_id, entries):
         return 0
     inserted = 0
     with database(project) as db:
+        db.execute("BEGIN IMMEDIATE")
         for item in entries:
+            topic = reconcile_topic(db, item)
             key = "|".join((source_id, item["character"].casefold(),
-                            item["topic"].casefold(), item["fact"].casefold(),
+                            topic.casefold(), item["fact"].casefold(),
                             item["certainty"]))
             identifier = hashlib.sha256(key.encode()).hexdigest()
             result = db.execute("""INSERT OR IGNORE INTO knowledge
                 (id,character,topic,fact,certainty,evidence,source_id)
-                VALUES (?,?,?,?,?,?,?)""", (identifier, item["character"], item["topic"],
+                VALUES (?,?,?,?,?,?,?)""", (identifier, item["character"], topic,
                 item["fact"], item["certainty"], item["evidence"], source_id))
             inserted += result.rowcount
     if inserted:
         export_markdown(project)
     return inserted
+
+
+def reconcile_topic(db, item):
+    """Link obvious topic variants; ambiguous matches remain separate.
+
+    LoreGraph uses lexical blocking followed by a semantic judge. This first
+    stage deliberately accepts only near-identical topic words, or identical
+    proposition text with a shared topic anchor; no model judgment is guessed.
+    """
+    words = lambda text: set(re.findall(r"[\w]+", text.casefold())) - TOPIC_FILLER
+    incoming = words(item["topic"])
+    candidates = db.execute("""SELECT topic,fact FROM knowledge AS k
+        WHERE lower(character)=lower(?) AND sequence=(
+            SELECT MAX(sequence) FROM knowledge AS newer
+            WHERE lower(newer.character)=lower(k.character)
+            AND lower(newer.topic)=lower(k.topic)) ORDER BY sequence DESC""",
+        (item["character"],)).fetchall()
+    matches = []
+    for topic, fact in candidates:
+        existing = words(topic)
+        if incoming and incoming == existing:
+            matches.append(topic)
+        elif (incoming & existing and
+              re.sub(r"\W+", " ", fact.casefold()).strip() ==
+              re.sub(r"\W+", " ", item["fact"].casefold()).strip()):
+            matches.append(topic)
+    return matches[0] if len(matches) == 1 else item["topic"]
 
 
 def export_markdown(project):

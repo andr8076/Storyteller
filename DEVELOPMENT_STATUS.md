@@ -8,12 +8,13 @@ Evaluate character-specific, temporal knowledge and continue with model-backed q
 - Profile retrieval now scores both filenames and contents. Long profiles inject matching lines from anywhere in the file, bounded by the existing per-file and total context limits.
 - Baseline before this change: 14 unit tests passed. After this change: 16 passed (`python -m unittest discover -s tests -v`). A disposable-world test covers a fact after the former 1,900-character cutoff and project isolation.
 - Experimental character knowledge ledger: Catch Up and completed generated scenes can record explicit named perspectives from the existing extraction call. Each state retains its source sentence and source ID, preserves certainty history, survives retries, and exports current state to `character-knowledge.md`. Normal Texting retrieves relevant attributed states. Data Dump remains timeless and does not advance this chronological ledger.
-- Comparative fixture: the old canon extractor incorrectly accepted an explicitly suspected vault location as world fact; now it rejects it while recording Ivo's suspicion, then updates Ivo's current state when he discovers the location. Historical states remain in SQLite. All 20 unit tests pass; no local model was run.
+- Comparative fixture: the old canon extractor incorrectly accepted an explicitly suspected vault location as world fact; now it rejects it while recording Ivo's suspicion, then updates Ivo's current state when he discovers the location. Historical states remain in SQLite. A focused topic reconciliation step links obvious alternate labels without merging different propositions. All 21 unit tests pass; no local model was run.
 
 ## Findings and decisions
 - The old gateway matched profile filenames only and injected their initial 1,900 characters. A correctly stored late fact could be invisible to the writer.
 - Narra is MIT licensed and offers structured character knowledge, events, relationships, and local semantic search. Its Rust, SurrealDB/RocksDB, and embedding stack would introduce a second memory store and integration work. No evidence yet shows it improves Storyteller's current extraction or retrieval enough to justify migration. Its knowledge ledger and temporal concepts remain candidates for a small later experiment.
 - Adapted Narra's append-only certainty/provenance idea into an isolated Storyteller ledger. This avoids a premature wholesale migration while exercising a substantive capability. Narra's richer graph, temporal event queries, and semantic search remain open for comparison.
+- LoreGraph's entity resolution uses cheap candidate blocking followed by model judgment and a sanity pass. Topic reconciliation currently applies only its conservative blocking idea: near-identical topic words, or identical fact text with a shared topic anchor. Ambiguous or semantic-only matches remain separate pending local-model evaluation.
 - This change introduces no model calls, migrations, or new Python packages. It reads eligible profile files per request; performance on very large profile collections has not been measured.
 
 ## Known limits
@@ -22,6 +23,7 @@ Evaluate character-specific, temporal knowledge and continue with model-backed q
 - Existing tests do not yet cover the full gateway and import path.
 - Existing completed imports are not backfilled into the new knowledge ledger; their original sources remain intact. The current grouping uses model-proposed topic strings, so paraphrased topics may form separate histories until entity/topic reconciliation improves.
 - The knowledge extraction prompt has not been evaluated on Qwen3.5-2B. Deterministic fixtures establish plumbing and guardrails, not extraction recall or model compliance.
+- Relevant commits: `30a49ff` profile retrieval; `be11f47` append-only knowledge experiment. The topic reconciliation commit is the current work.
 
 ## Next action
-When Build-Arch is online, compare Qwen3.5-2B's character-knowledge output with the baseline on a short unrelated scene (suspicion, later discovery, mistaken belief), then check one isolated Catch Up and Jan gateway request. Independently investigate topic reconciliation to keep histories linked across paraphrases.
+When Build-Arch is online, compare Qwen3.5-2B's character-knowledge output with the baseline on a short unrelated scene (suspicion, later discovery, mistaken belief), then check one isolated Catch Up and Jan gateway request. Only add semantic reconciliation if the model-backed comparison shows the lexical gate missing important histories.

@@ -76,6 +76,22 @@ class PerspectiveExperiment(unittest.TestCase):
         self.assertEqual(accepted, [])
         self.assertTrue(errors)
 
+    def test_topic_variants_link_without_merging_another_belief(self):
+        with tempfile.TemporaryDirectory() as folder:
+            project = {"alias": "fiction", "folder": folder}
+            base = {"character": "Ivo", "topic": "vault location",
+                    "fact": "The vault was beneath the lake", "certainty": "suspects",
+                    "evidence": "Ivo suspected the vault was beneath the lake."}
+            knowledge.record(project, "scene-1", [base])
+            knowledge.record(project, "scene-2", [
+                {**base, "topic": "location of vault", "certainty": "knows"}])
+            knowledge.record(project, "scene-3", [
+                {**base, "topic": "vault ownership", "fact": "Ivo owns the vault",
+                 "evidence": "Ivo learned he owns the vault.", "certainty": "knows"}])
+            states = knowledge.current(project)
+            self.assertEqual(len(states), 2)
+            self.assertEqual({r["topic"] for r in states}, {"vault location", "vault ownership"})
+
 
 if __name__ == "__main__":
     unittest.main()
