@@ -2,6 +2,7 @@
 import tempfile
 import unittest
 import sqlite3
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -220,6 +221,53 @@ class PerspectiveExperiment(unittest.TestCase):
                 project, [{"role": "user", "content": "Where does Dorian think the key is now?"}])
             self.assertIn("Dorian knows: The key is in the cellar", injection)
             self.assertNotIn("Dorian believes:", injection)
+
+    def test_selective_local_perspective_pass_in_catchup(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "chapter.txt"
+            source.write_text("Rhea hid the map behind the furnace. She told Joss, 'The map burned.' "
+                              "Joss believed her. Later, Joss saw the map behind the furnace.")
+            project = {"alias": "fiction", "name": "Fiction", "folder": str(root / "project")}
+            focused = {"knowledge_changes": [
+                {"character": "Joss", "topic": "map location", "fact": "The map burned",
+                 "certainty": "believes", "evidence_numbers": [2]},
+                {"character": "Joss", "topic": "map location", "fact": "The map is behind the furnace",
+                 "certainty": "knows", "evidence_numbers": [3]}]}
+            endpoint = "http://127.0.0.1:19999/v1/chat/completions"
+            with (patch.dict(os.environ, {"STORYTELLER_PERSPECTIVE_ENDPOINT": endpoint}),
+                  patch.object(mem, "is_healthy", return_value=True),
+                  patch.object(import_modes, "request_model", return_value={"changes": [], "summary": "", "knowledge_changes": []}),
+                  patch.object(import_modes, "request_perspectives", return_value=focused) as extra):
+                status = import_modes.run_import(project, "catchup", source)
+            self.assertEqual(status["state"], "complete")
+            extra.assert_called_once()
+            self.assertEqual([x["certainty"] for x in knowledge.current(project)], ["knows"])
+            self.assertEqual(knowledge.current(project)[0]["fact"], "The map is behind the furnace")
+            self.assertEqual(source.read_text().count("Rhea hid"), 1)
+
+    def test_perspective_endpoint_rejects_remote_and_skips_plain_dump(self):
+        with patch.dict(os.environ, {"STORYTELLER_PERSPECTIVE_ENDPOINT":
+                                      "https://example.com/v1/chat/completions"}):
+            with self.assertRaises(ValueError):
+                import_modes.perspective_endpoint()
+        self.assertFalse(import_modes.needs_perspective_pass("The ship has a single reactor."))
+        self.assertTrue(import_modes.needs_perspective_pass("Joss believed the map burned."))
+
+    def test_unavailable_optional_pass_keeps_literal_catchup(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "chapter.txt"
+            source.write_text("Ivo suspected the vault was beneath the lake.")
+            project = {"alias": "fiction", "name": "Fiction", "folder": str(root / "project")}
+            with (patch.dict(os.environ, {"STORYTELLER_PERSPECTIVE_ENDPOINT":
+                                      "http://127.0.0.1:19999/v1/chat/completions"}),
+                  patch.object(mem, "is_healthy", return_value=True),
+                  patch.object(import_modes, "request_model", return_value={"changes": [], "summary": ""}),
+                  patch.object(import_modes, "request_perspectives", side_effect=TimeoutError)):
+                status = import_modes.run_import(project, "catchup", source)
+            self.assertEqual(status["state"], "complete")
+            self.assertEqual(knowledge.current(project)[0]["certainty"], "suspects")
 
     def test_topic_variants_link_without_merging_another_belief(self):
         with tempfile.TemporaryDirectory() as folder:

@@ -1,7 +1,7 @@
 # Development status
 
 ## Current objective
-Improve source-backed character knowledge chronology across dialogue, pronouns, import, and retrieval.
+Evaluate selective perspective extraction for dialogue-heavy Catch Up sections.
 
 ## Verified implementation
 - The Jan gateway, import modes, and memory worker remain in place. No runtime or project migration was performed.
@@ -24,12 +24,14 @@ Improve source-backed character knowledge chronology across dialogue, pronouns, 
 - Existing Qwen3.5-9B-Q4_K_M on CPU: joint prompt found Ari/Cyra but prematurely assigned Dorian the true location. A dedicated perspective-only prompt produced the correct raw belief sequence in two unrelated scenes with Storyteller's own sentence numbering (about 10.7 and 14.8 seconds per call). The validator accepts both Joss states in the map scene and Dorian's earlier attic belief; it rejects Lena's implicit knowledge and Dorian's later pronoun-only discovery in the key scene. The model is more capable but an automatic switch would add substantial latency and still leave pronoun attribution unresolved.
 - The knowledge validator no longer applies the world-fact observer guard when a character explicitly sees something and gains knowledge. 30 unit tests pass in the development checkout.
 - The current change binds a nearby pronoun discovery to a uniquely named preceding subject, checks fact content against the cited clause, and sorts states by source sentence before recording. The combination step retains later model-derived states after an earlier literal state for the same topic. A fixture based on the local 9B model's actual key-scene output rejects an inferred Lena state, records Dorian's attic belief and later cellar discovery, and retrieves only his current knowledge. Ambiguous antecedents are rejected. 19 focused tests pass.
+- An opt-in local perspective endpoint now supplies a dedicated extraction pass for Catch Up sections with dialogue or changing perspectives. Set `STORYTELLER_PERSPECTIVE_ENDPOINT=http://127.0.0.1:PORT/v1/chat/completions` before starting Storyteller, with a separately started local model; optionally set `STORYTELLER_PERSPECTIVE_MODEL`. The pass is never used for Data Dump or plain sections. The existing 2B extraction remains the fallback on connection/response failure, and every candidate still passes the same source validator. A mock-model Catch Up fixture exercised persistence and continuation without touching the original manuscript; a timeout fixture confirmed fallback. 38 tests pass in the development checkout.
 - Retrieval remains lexical; paraphrases without overlapping terms can be missed. Canon, summary, and source excerpts still use their existing ranking and truncation rules.
 - Existing tests do not yet cover the full gateway and import path.
 - Existing completed imports are not backfilled into the new knowledge ledger; their original sources remain intact. The current grouping uses model-proposed topic strings, so paraphrased topics may form separate histories until entity/topic reconciliation improves.
 - Qwen3.5-2B is unreliable for perspective extraction from short isolated sentences. Literal fallback covers simple declarative constructions, while complex dialogue, pronouns, and indirect knowledge still depend on model quality.
 - The adjacent pronoun rule only handles a clearly named prior subject and an immediate discovery sentence. More complex dialogue and cross-section antecedents remain unresolved. The earlier 9B output was reused as a deterministic fixture; this change has not yet been rerun through a live 9B import.
+- Build-Arch disconnected during the opt-in integration work. The dedicated pass has only been verified with a mock 9B response, not a live server. It currently requires manually launching the extra local server and supplying its endpoint; its latency and effect on larger scenes are unmeasured.
 - Relevant commits: `30a49ff` profile retrieval; `be11f47` append-only knowledge experiment; `dd2fcfe` topic reconciliation. Data Dump baseline support is the current work.
 
 ## Next action
-Prototype an optional, selective local 9B perspective pass for dialogue-heavy Catch Up sections, compare it with the 2B baseline on unrelated scenes, and bound the added latency. Then check Jan/Cydonia injection and a modest Sparkdrive excerpt before any broad import.
+When Build-Arch reconnects, compare the opt-in 9B pass against default 2B on two unrelated scenes and a modest Sparkdrive excerpt, measuring accuracy and added latency. Then check Jan/Cydonia injection before any broader rollout.

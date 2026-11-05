@@ -19,6 +19,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 import memory_worker as mem
@@ -71,6 +72,51 @@ Capture up to 12 important distinct facts per section.
 Do not omit explicit appearance, equipment, personality or world rules.
 The surrounding summaries are context only, NEVER evidence.
 Output valid JSON only; no Markdown, no analysis. /no_think"""
+
+PERSPECTIVE_PROMPT = """Extract the changing knowledge of named characters from this fiction.
+Return JSON with a knowledge_changes array only. Each entry must have character,
+topic, a self-contained fact, certainty (knows, suspects, believes,
+believes_wrongly, denies, or forgotten), and evidence_numbers from the numbered
+SOURCE SECTION. A character's belief is not world truth. Preserve the order of
+belief and discovery. Do not infer that someone knows a fact merely because the
+reader or another character knows it. Cite only explicit source evidence.
+Return valid JSON only; no Markdown, no analysis. /no_think"""
+
+
+def perspective_endpoint():
+    """An explicitly configured, separately launched local model; never remote inference."""
+    url = os.environ.get("STORYTELLER_PERSPECTIVE_ENDPOINT", "").strip()
+    if not url:
+        return ""
+    parsed = urlsplit(url)
+    if (parsed.scheme != "http" or parsed.hostname not in ("127.0.0.1", "localhost", "::1")
+            or parsed.username or parsed.password or not parsed.port
+            or parsed.path != "/v1/chat/completions" or parsed.query or parsed.fragment):
+        raise ValueError("Perspective endpoint must be a local HTTP /v1/chat/completions URL")
+    return url
+
+
+def needs_perspective_pass(chunk):
+    """Reserve the slower pass for dialogue or changed character perspectives."""
+    return bool(re.search(r"\b(?:told|believed|suspected|lied|deceived|learned|discovered|"
+                          r"realized|recognised|recognized|found out)\b", chunk, re.I))
+
+
+def request_perspectives(endpoint, numbered):
+    data = {"model": os.environ.get("STORYTELLER_PERSPECTIVE_MODEL", "local"),
+            "messages": [{"role": "system", "content": PERSPECTIVE_PROMPT},
+                         {"role": "user", "content": "SOURCE SECTION:\n" + numbered}],
+            "stream": False, "temperature": 0, "max_tokens": 800,
+            "response_format": {"type": "json_object"},
+            "chat_template_kwargs": {"enable_thinking": False}}
+    request = Request(endpoint, data=json.dumps(data).encode("utf-8"),
+                      headers={"Content-Type": "application/json"}, method="POST")
+    with urlopen(request, timeout=100) as response:
+        payload = json.load(response)
+    result = json.loads(payload["choices"][0]["message"]["content"])
+    if not isinstance(result, dict) or not isinstance(result.get("knowledge_changes"), list):
+        raise ValueError("Perspective model returned invalid knowledge_changes")
+    return result
 
 
 def stamp():
@@ -475,6 +521,7 @@ def run_import(project, mode, source, plan=None):
                      project_alias=project["alias"], file_count=plan["file_count"],
                      started_at=state.get("started_at", stamp()))
         section_number = 0
+        perspective_url = perspective_endpoint() if mode == "catchup" else ""
         previous_summary = ""
         known = []
         for doc in docs:
@@ -505,6 +552,15 @@ def run_import(project, mode, source, plan=None):
                     valid, rejected, summary = validate_records(
                         raw, chunk, doc["text"], mode)
                     model_perspectives, knowledge_rejected = character_knowledge.validate(raw, chunk)
+                    if perspective_url and needs_perspective_pass(chunk):
+                        try:
+                            focused = request_perspectives(perspective_url, numbered)
+                            focused_rows, focused_rejected = character_knowledge.validate(focused, chunk)
+                            model_perspectives = character_knowledge.combine(
+                                model_perspectives, focused_rows)
+                            knowledge_rejected.extend(focused_rejected)
+                        except (URLError, TimeoutError, ValueError, KeyError, IndexError) as exc:
+                            say(f"  optional perspective pass unavailable: {type(exc).__name__}")
                     perspectives = character_knowledge.combine(
                         model_perspectives, character_knowledge.explicit_perspectives(chunk))
                     source_ref = f"import:{mode}:{jobid}:section:{section_number}"
