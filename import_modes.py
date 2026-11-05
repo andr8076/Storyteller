@@ -24,6 +24,7 @@ from urllib.request import Request, urlopen
 import memory_worker as mem
 import storyteller
 import story_state
+import character_knowledge
 
 ROOT = Path(__file__).resolve().parent
 EXTENSIONS = {".txt", ".md", ".markdown"}
@@ -54,7 +55,14 @@ Return JSON only, like:
 {"changes":[{"entity":"Demi","category":"identity",
 "fact":"Demi was created by the Director",
 "evidence_numbers":[2],"confidence":"high"}],
-"summary":"Brief synopsis of the source section."}
+"summary":"Brief synopsis of the source section.",
+"knowledge_changes":[{"character":"Ivo","topic":"vault location",
+"fact":"The vault is beneath the lake","certainty":"suspects",
+"evidence_numbers":[3]}]}
+Knowledge changes are character perspectives, not world canon. Include only
+when a named character explicitly knows, suspects, believes, denies, or forgets
+a proposition in the original source. A rumor must never become a world fact.
+Use the same topic for later changes in certainty about the same proposition.
 Capture up to 12 important distinct facts per section.
 Do not omit explicit appearance, equipment, personality or world rules.
 The surrounding summaries are context only, NEVER evidence.
@@ -489,9 +497,14 @@ def run_import(project, mode, source, plan=None):
                                         ", ".join(dict.fromkeys(known[-14:])))
                     valid, rejected, summary = validate_records(
                         raw, chunk, doc["text"], mode)
+                    perspectives, knowledge_rejected = character_knowledge.validate(raw, chunk)
                     source_ref = f"import:{mode}:{jobid}:section:{section_number}"
                     count = mem.apply_changes(project, source_ref, valid,
                                               timeline=(mode == "catchup"))
+                    if mode == "catchup":
+                        count += character_knowledge.record(project, source_ref, perspectives)
+                    rejected.extend({"reason": "knowledge: " + reason, "detail": ""}
+                                    for reason in knowledge_rejected)
                     if mode == "dump":
                         append_dump_global_facts(project, jobid, valid, source)
                     append_rejections(project, jobid, section_number,

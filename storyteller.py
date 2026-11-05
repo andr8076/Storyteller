@@ -23,6 +23,7 @@ import story_state
 import prompt_mode
 import prompt_affixes
 import memory_retrieval
+import character_knowledge
 
 ROOT = Path(__file__).resolve().parent
 CONFIG = Path(os.environ.get("STORYTELLER_CONFIG", ROOT / "projects.json"))
@@ -188,7 +189,8 @@ def select_memory(project, messages):
     if recent.is_file() and not recent.is_symlink():
         files.append(recent)
     state_file = story_state.location(project) / "story-state.md"
-    if not files and not state_file.is_file():
+    ledger_file = root / "character-knowledge.sqlite3"
+    if not files and not state_file.is_file() and not ledger_file.is_file():
         return "", []
     parts, selected = [], []
     remaining = MEMORY_MAX
@@ -199,6 +201,12 @@ def select_memory(project, messages):
             parts.append("### CURRENT STORY POSITION (project-specific)\n" + snippet)
             selected.append("project-state/" + project["alias"] + "/story-state.md")
             remaining -= len(snippet)
+    perspective = character_knowledge.relevant(project, " ".join(latest), terms,
+                                                limit=min(remaining, 1700))
+    if perspective:
+        parts.append("### CHARACTER PERSPECTIVES (attributed; beliefs are not world facts)\n" + perspective)
+        selected.append("memory/character-knowledge.sqlite3")
+        remaining -= len(perspective)
     for path in files:
         body = profile_bodies.get(path)
         if body is None:

@@ -19,6 +19,7 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 import story_state
+import character_knowledge
 
 HOME = Path(__file__).resolve().parent
 MODEL_FILE = HOME / "models" / "qwen3.5-2b-Q4_K_M.gguf"
@@ -68,6 +69,15 @@ Scene: 'Mara wondered whether a fall could leave a scar.'
 {"changes":[]}
 Scene: 'Demi smiled and walked across the bridge.'
 {"changes":[]}
+Also return a separate 'knowledge_changes' array for EXPLICIT character perspectives.
+Each item: {"character":"Mara","topic":"vault location","fact":"The vault is beneath the lake",
+"certainty":"suspects","evidence_numbers":[1]}. Certainty is knows, suspects,
+believes, believes_wrongly, denies, or forgotten. This is what the character
+thinks, NOT automatically a true world fact. Only include clearly named people
+with an explicit learning, knowing, suspecting, believing or forgetting cue.
+For example 'Ivo suspected the gate was under the lake' is a perspective,
+not an established location. Return [] when none. Keep topic stable when a
+character's certainty about the same proposition changes.
 Return valid JSON only. /no_think"""
 
 def iso_now():
@@ -104,7 +114,8 @@ def complete_character_name(short_name, scene):
 def speculative_evidence(evidence):
     """Reject uncertainty without rejecting definitive 'would never heal' phrasing."""
     text = evidence.lower()
-    if re.search(r"\b(might|perhaps|hypothetical|maybe|possibly|if)\b", text):
+    if re.search(r"\b(might|perhaps|hypothetical|maybe|possibly|if|"
+                 r"suspect(?:s|ed)?|believ(?:e|es|ed)|rumou?red|alleged)\b", text):
         return True
     if re.search(r"\bcould\b(?!\s+not\b|\s+never\b)", text):
         return True
@@ -190,7 +201,7 @@ def request_json(numbered_scene):
             {"role": "user", "content": "Completed fictional scene (numbered sentences):\n" + numbered_scene}
         ],
         "temperature": 0,
-        "max_tokens": 750,
+        "max_tokens": 1150,
         "stream": False,
         "response_format": {"type": "json_object"},
         "chat_template_kwargs": {"enable_thinking": False}
@@ -205,7 +216,7 @@ def request_json(numbered_scene):
     result = json.loads(reply)
     if not isinstance(result, dict) or not isinstance(result.get("changes"), list):
         raise ValueError("Memory AI did not return a changes array")
-    return result["changes"]
+    return result
 
 
 def split_scene(text, max_size=4400):
@@ -324,10 +335,10 @@ def evidence_supports_claim(entity, fact, evidence):
         1, (len(claim_words) * 3 + 4) // 5)
 
 
-def extract(scene):
-    validated, rejected = [], []
+def extract(scene, *, include_knowledge=False):
+    validated, rejected, perspectives = [], [], []
     if not isinstance(scene, str) or not scene.strip():
-        return validated, rejected
+        return (validated, rejected, perspectives) if include_knowledge else (validated, rejected)
     chunks = split_scene(scene)
     for chunk_index, raw_chunk in enumerate(chunks):
         # Reintroduce the preceding short tail for cross-boundary references.
@@ -338,7 +349,15 @@ def extract(scene):
             log(f"Analyzing chapter section {chunk_index + 1}/{len(chunks)}")
         sentences = split_sentences(chunk)
         numbered = "\n".join(f"[{i}] {part}" for i, part in enumerate(sentences, 1))
-        results = request_json(numbered)
+        response = request_json(numbered)
+        # Existing callers/tests may supply the original changes-only form.
+        if isinstance(response, list):
+            response = {"changes": response}
+        results = response["changes"]
+        if include_knowledge:
+            found, problems = character_knowledge.validate(response, chunk)
+            perspectives.extend(found)
+            rejected.extend(("knowledge: " + reason, "") for reason in problems)
         for row in results[:18]:
             if not isinstance(row, dict):
                 rejected.append(("not a JSON object", str(row)[:120]))
@@ -384,6 +403,8 @@ def extract(scene):
     for item in validated:
         key = (normalize(item["entity"]), normalize(item["fact"]))
         unique.setdefault(key, item)
+    if include_knowledge:
+        return list(unique.values()), rejected, perspectives
     return list(unique.values()), rejected
 
 
@@ -595,8 +616,9 @@ class Worker:
                     # Archive the exact scene first: even imperfect 2B analysis
                     # cannot cause the written source material to be lost.
                     archive_generated_scene(project, identifier, scene)
-                    changes, rejects = extract(scene)
+                    changes, rejects, perspectives = extract(scene, include_knowledge=True)
                     count = apply_changes(project, identifier, changes)
+                    count += character_knowledge.record(project, identifier, perspectives)
                     if rejects:
                         # A human can inspect untrusted or uncertain suggestions.
                         with open(base / "review.jsonl", "a", encoding="utf-8") as f:

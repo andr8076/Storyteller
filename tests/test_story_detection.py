@@ -85,7 +85,7 @@ class RecoverSkippedTests(unittest.TestCase):
                                (hashlib.sha256(line.encode()).hexdigest(),
                                 "skipped", 0, "short or non-narrative response", "earlier"))
             worker = memory_worker.Worker([project])
-            with patch.object(memory_worker, "extract", return_value=([], [])) as mock_extract, \
+            with patch.object(memory_worker, "extract", return_value=([], [], [])) as mock_extract, \
                  patch.object(memory_worker, "apply_changes", return_value=1) as mock_apply:
                 worker.process_project(project)
                 worker.process_project(project)  # must not process duplicate
