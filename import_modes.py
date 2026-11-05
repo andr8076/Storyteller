@@ -63,6 +63,8 @@ Knowledge changes are character perspectives, not world canon. Include only
 when a named character explicitly knows, suspects, believes, denies, or forgets
 a proposition in the original source. A rumor must never become a world fact.
 Use the same topic for later changes in certainty about the same proposition.
+Being told a claim does not establish its truth; use believes unless the text
+confirms it. Mark believes_wrongly only with an explicit correction.
 Capture up to 12 important distinct facts per section.
 Do not omit explicit appearance, equipment, personality or world rules.
 The surrounding summaries are context only, NEVER evidence.
@@ -501,8 +503,8 @@ def run_import(project, mode, source, plan=None):
                     source_ref = f"import:{mode}:{jobid}:section:{section_number}"
                     count = mem.apply_changes(project, source_ref, valid,
                                               timeline=(mode == "catchup"))
-                    if mode == "catchup":
-                        count += character_knowledge.record(project, source_ref, perspectives)
+                    count += character_knowledge.record(project, source_ref, perspectives,
+                                                        timeline=(mode == "catchup"))
                     rejected.extend({"reason": "knowledge: " + reason, "detail": ""}
                                     for reason in knowledge_rejected)
                     if mode == "dump":

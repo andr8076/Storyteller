@@ -8,7 +8,7 @@ Evaluate character-specific, temporal knowledge and continue with model-backed q
 - Profile retrieval now scores both filenames and contents. Long profiles inject matching lines from anywhere in the file, bounded by the existing per-file and total context limits.
 - Baseline before this change: 14 unit tests passed. After this change: 16 passed (`python -m unittest discover -s tests -v`). A disposable-world test covers a fact after the former 1,900-character cutoff and project isolation.
 - Experimental character knowledge ledger: Catch Up and completed generated scenes can record explicit named perspectives from the existing extraction call. Each state retains its source sentence and source ID, preserves certainty history, survives retries, and exports current state to `character-knowledge.md`. Normal Texting retrieves relevant attributed states. Data Dump remains timeless and does not advance this chronological ledger.
-- Comparative fixture: the old canon extractor incorrectly accepted an explicitly suspected vault location as world fact; now it rejects it while recording Ivo's suspicion, then updates Ivo's current state when he discovers the location. Historical states remain in SQLite. A focused topic reconciliation step links obvious alternate labels without merging different propositions. All 21 unit tests pass; no local model was run.
+- Comparative fixture: the old canon extractor incorrectly accepted an explicitly suspected vault location as world fact; now it rejects it while recording Ivo's suspicion, then updates Ivo's current state when he discovers the location. Historical states remain in SQLite. A focused topic reconciliation step links obvious alternate labels without merging different propositions. Data Dump can save timeless baseline perspectives without overriding later scene states. An additive migration preserves the first experimental schema. All 23 unit tests pass; no local model was run.
 
 ## Findings and decisions
 - The old gateway matched profile filenames only and injected their initial 1,900 characters. A correctly stored late fact could be invisible to the writer.
@@ -23,7 +23,7 @@ Evaluate character-specific, temporal knowledge and continue with model-backed q
 - Existing tests do not yet cover the full gateway and import path.
 - Existing completed imports are not backfilled into the new knowledge ledger; their original sources remain intact. The current grouping uses model-proposed topic strings, so paraphrased topics may form separate histories until entity/topic reconciliation improves.
 - The knowledge extraction prompt has not been evaluated on Qwen3.5-2B. Deterministic fixtures establish plumbing and guardrails, not extraction recall or model compliance.
-- Relevant commits: `30a49ff` profile retrieval; `be11f47` append-only knowledge experiment. The topic reconciliation commit is the current work.
+- Relevant commits: `30a49ff` profile retrieval; `be11f47` append-only knowledge experiment; `dd2fcfe` topic reconciliation. Data Dump baseline support is the current work.
 
 ## Next action
 When Build-Arch is online, compare Qwen3.5-2B's character-knowledge output with the baseline on a short unrelated scene (suspicion, later discovery, mistaken belief), then check one isolated Catch Up and Jan gateway request. Only add semantic reconciliation if the model-backed comparison shows the lexical gate missing important histories.

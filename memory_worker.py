@@ -78,6 +78,8 @@ with an explicit learning, knowing, suspecting, believing or forgetting cue.
 For example 'Ivo suspected the gate was under the lake' is a perspective,
 not an established location. Return [] when none. Keep topic stable when a
 character's certainty about the same proposition changes.
+Being told a claim does not prove it true; mark it believes unless the scene
+explicitly establishes the truth. A wrong belief needs an explicit correction.
 Return valid JSON only. /no_think"""
 
 def iso_now():

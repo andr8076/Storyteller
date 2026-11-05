@@ -75,11 +75,16 @@ def database(project):
         sequence INTEGER PRIMARY KEY AUTOINCREMENT,
         id TEXT UNIQUE NOT NULL, character TEXT NOT NULL,
         topic TEXT NOT NULL, fact TEXT NOT NULL, certainty TEXT NOT NULL,
-        evidence TEXT NOT NULL, source_id TEXT NOT NULL)""")
+        evidence TEXT NOT NULL, source_id TEXT NOT NULL,
+        scope TEXT NOT NULL DEFAULT 'timeline')""")
+    # Additive compatibility for an experimental ledger already created.
+    columns = {row[1] for row in db.execute("PRAGMA table_info(knowledge)")}
+    if "scope" not in columns:
+        db.execute("ALTER TABLE knowledge ADD COLUMN scope TEXT NOT NULL DEFAULT 'timeline'")
     return db
 
 
-def record(project, source_id, entries):
+def record(project, source_id, entries, *, timeline=True):
     """Append states; replaying a source never duplicates its states."""
     if not entries:
         return 0
@@ -93,9 +98,10 @@ def record(project, source_id, entries):
                             item["certainty"]))
             identifier = hashlib.sha256(key.encode()).hexdigest()
             result = db.execute("""INSERT OR IGNORE INTO knowledge
-                (id,character,topic,fact,certainty,evidence,source_id)
-                VALUES (?,?,?,?,?,?,?)""", (identifier, item["character"], topic,
-                item["fact"], item["certainty"], item["evidence"], source_id))
+                (id,character,topic,fact,certainty,evidence,source_id,scope)
+                VALUES (?,?,?,?,?,?,?,?)""", (identifier, item["character"], topic,
+                item["fact"], item["certainty"], item["evidence"], source_id,
+                "timeline" if timeline else "baseline"))
             inserted += result.rowcount
     if inserted:
         export_markdown(project)
@@ -152,12 +158,17 @@ def current(project):
     if not path.is_file() or path.is_symlink():
         return []
     with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as db:
+        columns = {row[1] for row in db.execute("PRAGMA table_info(knowledge)")}
+        order = (("(newer.scope='timeline') DESC, newer.sequence DESC")
+                 if "scope" in columns else "newer.sequence DESC")
         return [dict(zip(("character", "topic", "fact", "certainty", "evidence", "source_id"), row))
-                for row in db.execute("""SELECT character,topic,fact,certainty,evidence,source_id
+                for row in db.execute(f"""SELECT character,topic,fact,certainty,evidence,source_id
                     FROM knowledge AS k WHERE sequence = (
-                      SELECT MAX(sequence) FROM knowledge AS newer
+                      SELECT sequence FROM knowledge AS newer
                       WHERE lower(newer.character)=lower(k.character)
-                      AND lower(newer.topic)=lower(k.topic)) ORDER BY sequence DESC""")]
+                      AND lower(newer.topic)=lower(k.topic)
+                      ORDER BY {order} LIMIT 1)
+                    ORDER BY sequence DESC""")]
 
 
 def relevant(project, query, terms, limit=1400):

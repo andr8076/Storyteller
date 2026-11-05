@@ -1,6 +1,7 @@
 """Small comparative experiment: world canon versus attributed perspectives."""
 import tempfile
 import unittest
+import sqlite3
 from pathlib import Path
 from unittest.mock import patch
 
@@ -91,6 +92,37 @@ class PerspectiveExperiment(unittest.TestCase):
             states = knowledge.current(project)
             self.assertEqual(len(states), 2)
             self.assertEqual({r["topic"] for r in states}, {"vault location", "vault ownership"})
+
+    def test_dump_baseline_cannot_rewind_later_story_knowledge(self):
+        with tempfile.TemporaryDirectory() as folder:
+            project = {"alias": "fiction", "folder": folder}
+            base = {"character": "Ivo", "topic": "vault location",
+                    "fact": "The vault was beneath the lake", "certainty": "suspects",
+                    "evidence": "Ivo suspected the vault was beneath the lake."}
+            knowledge.record(project, "dump-1", [base], timeline=False)
+            knowledge.record(project, "scene-1", [{**base, "certainty": "knows"}])
+            knowledge.record(project, "dump-2", [base], timeline=False)
+            self.assertEqual(knowledge.current(project)[0]["certainty"], "knows")
+            with knowledge.database(project) as db:
+                self.assertEqual(db.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0], 3)
+
+    def test_existing_experimental_ledger_reads_and_migrates_additively(self):
+        with tempfile.TemporaryDirectory() as folder:
+            project = {"alias": "fiction", "folder": folder}
+            root = Path(folder) / ".storyteller" / "memory"
+            root.mkdir(parents=True)
+            with sqlite3.connect(root / "character-knowledge.sqlite3") as db:
+                db.execute("""CREATE TABLE knowledge (
+                    sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL,
+                    character TEXT NOT NULL, topic TEXT NOT NULL, fact TEXT NOT NULL,
+                    certainty TEXT NOT NULL, evidence TEXT NOT NULL, source_id TEXT NOT NULL)""")
+                db.execute("INSERT INTO knowledge (id,character,topic,fact,certainty,evidence,source_id) "
+                           "VALUES ('old','Ivo','gate state','The gate is open','suspects',"
+                           "'Ivo suspected the gate is open.','old-scene')")
+            self.assertEqual(knowledge.current(project)[0]["fact"], "The gate is open")
+            with knowledge.database(project) as db:
+                self.assertIn("scope", {row[1] for row in db.execute("PRAGMA table_info(knowledge)")})
+            self.assertEqual(knowledge.current(project)[0]["fact"], "The gate is open")
 
 
 if __name__ == "__main__":
