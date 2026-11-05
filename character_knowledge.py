@@ -40,6 +40,10 @@ def validate(response, text, *, limit=12):
                 and 7 <= len(fact) <= 260 and mem.slug(character)):
             rejected.append("invalid knowledge length")
             continue
+        if (re.match(r"^(?:he|she|it|they|him|her|them|his|their)\b", fact, re.I)
+                or mem.perspective_statement(fact)):
+            rejected.append("knowledge fact must be a self-contained proposition")
+            continue
         evidence = " ".join(sentences[i - 1] for i in refs)
         name = re.escape(character)
         named = r"(?<!\w)" + name + r"(?!\w)"
@@ -48,7 +52,8 @@ def validate(response, text, *, limit=12):
         cue = (rf"{named}(?:\s+\w+){{0,3}}\s+(?:{MENTAL_VERBS})\b|"
                rf"\btold\s+{named}\b")
         if (not re.search(cue, evidence, re.I)
-                or not mem.evidence_supports_claim(character, fact, evidence)
+                or not mem.evidence_supports_claim(character, fact, evidence,
+                                                   observer_guard=False)
                 or len(evidence) > 900):
             rejected.append("perspective or content not explicit in cited evidence")
             continue
@@ -62,7 +67,8 @@ def validate(response, text, *, limit=12):
         if certainty == "believes_wrongly":
             belief_clause = re.split(r"\b(?:but\s+in\s+fact|in\s+fact|but\s+actually|actually)\b",
                                      evidence, maxsplit=1, flags=re.I)[0]
-            if not mem.evidence_supports_claim(character, fact, belief_clause):
+            if not mem.evidence_supports_claim(character, fact, belief_clause,
+                                               observer_guard=False):
                 rejected.append("belief content taken from the correction rather than the character")
                 continue
         accepted.append({"character": character, "topic": topic, "fact": fact,
@@ -88,9 +94,11 @@ def explicit_perspectives(text):
         if not match:
             continue
         character, wrong, verb, proposition = match.groups()
-        proposition = re.split(r"\s*,?\s*but\s+in\s+fact\b|\s*,?\s*but\s+actually\b|\s*;",
+        proposition = re.split(r"\s*,?\s*but\b|\s*;",
                                proposition, maxsplit=1, flags=re.I)[0].strip(" .!?\"'")
         if not 7 <= len(proposition) <= 260:
+            continue
+        if re.match(r"^(?:he|she|it|they|him|her|them|his|their)\b", proposition, re.I):
             continue
         fact = proposition[0].upper() + proposition[1:]
         subject = re.match(r"(?:the|a|an)\s+([A-Za-z][\w-]*)|([A-Za-z][\w-]*)", proposition, re.I)

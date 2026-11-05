@@ -123,6 +123,25 @@ class PerspectiveExperiment(unittest.TestCase):
         self.assertEqual(canon, [])
         self.assertTrue(rejected)
 
+    def test_literal_fallback_skips_pronoun_and_separates_other_character(self):
+        deception = ("She told him the key was in the attic. "
+                     "Dorian believed her and searched the attic.")
+        self.assertEqual(knowledge.explicit_perspectives(deception), [])
+        contrast = "Ari suspected the hatch was rigged, but Cyra believed it was safe."
+        rows = knowledge.explicit_perspectives(contrast)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["fact"], "The hatch was rigged")
+        self.assertEqual(rows[0]["character"], "Ari")
+
+    def test_observation_can_ground_character_knowledge(self):
+        scene = "Joss saw the map behind the furnace and knew she had deceived him."
+        row = {"character": "Joss", "topic": "map location",
+               "fact": "The map is behind the furnace", "certainty": "knows",
+               "evidence_numbers": [1]}
+        accepted, rejected = knowledge.validate({"knowledge_changes": [row]}, scene)
+        self.assertEqual(rejected, [])
+        self.assertEqual(len(accepted), 1)
+
     def test_topic_variants_link_without_merging_another_belief(self):
         with tempfile.TemporaryDirectory() as folder:
             project = {"alias": "fiction", "folder": folder}

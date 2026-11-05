@@ -308,7 +308,7 @@ def confirm_anchors(fact, evidence):
     return True
 
 
-def evidence_supports_claim(entity, fact, evidence):
+def evidence_supports_claim(entity, fact, evidence, *, observer_guard=True):
     """Only accept facts directly supported by a passage naming the entity.
 
     The small model sometimes attributes a quoted sentence about another
@@ -325,7 +325,7 @@ def evidence_supports_claim(entity, fact, evidence):
     observer = (r"(?<!\w)" + re.escape(named) +
                 r"\s+(?:sized|watched|observed|studied|looked|"
                 r"examined|noticed|saw|scanned)\b")
-    if (re.search(observer, source) and
+    if (observer_guard and re.search(observer, source) and
             re.search(r"\b(?:him|her|them|his|their)\b", source)):
         return False
     filler = {

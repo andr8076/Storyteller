@@ -1,7 +1,7 @@
 # Development status
 
 ## Current objective
-Improve character-specific knowledge extraction against the actual local model, then verify one isolated gateway/import path.
+Improve character-specific knowledge extraction from dialogue and pronouns without promoting unsupported beliefs.
 
 ## Verified implementation
 - The Jan gateway, import modes, and memory worker remain in place. No runtime or project migration was performed.
@@ -20,11 +20,15 @@ Improve character-specific knowledge extraction against the actual local model, 
 
 ## Known limits
 - The model-backed probe exercised Qwen, Catch Up, and the actual gateway HTTP handler with a mock writer in an isolated temporary project. Jan/Cydonia and Sparkdrive have not been exercised. No personal projects or original manuscripts were modified.
+- Dialogue/pronoun probe on Build-Arch: Qwen3.5-2B returned no knowledge for two short prose scenes. The literal fallback incorrectly saved “Dorian believed her and searched…” as a belief about “her,” and included Cyra's clause in Ari's suspicion. It now skips pronoun-only propositions and cuts at contrasting clauses.
+- Existing Qwen3.5-9B-Q4_K_M on CPU: joint prompt found Ari/Cyra but prematurely assigned Dorian the true location. A dedicated perspective-only prompt produced the correct raw belief sequence in two unrelated scenes with Storyteller's own sentence numbering (about 10.7 and 14.8 seconds per call). The validator accepts both Joss states in the map scene and Dorian's earlier attic belief; it rejects Lena's implicit knowledge and Dorian's later pronoun-only discovery in the key scene. The model is more capable but an automatic switch would add substantial latency and still leave pronoun attribution unresolved.
+- The knowledge validator no longer applies the world-fact observer guard when a character explicitly sees something and gains knowledge. 30 unit tests pass in the development checkout.
 - Retrieval remains lexical; paraphrases without overlapping terms can be missed. Canon, summary, and source excerpts still use their existing ranking and truncation rules.
 - Existing tests do not yet cover the full gateway and import path.
 - Existing completed imports are not backfilled into the new knowledge ledger; their original sources remain intact. The current grouping uses model-proposed topic strings, so paraphrased topics may form separate histories until entity/topic reconciliation improves.
 - Qwen3.5-2B is unreliable for perspective extraction from short isolated sentences. Literal fallback covers simple declarative constructions, while complex dialogue, pronouns, and indirect knowledge still depend on model quality.
+- A model's evidence number may cite only a pronoun sentence. Do not accept that state until a source-backed antecedent can be established. The model's raw chronology and the ledger's accepted chronology must be evaluated separately.
 - Relevant commits: `30a49ff` profile retrieval; `be11f47` append-only knowledge experiment; `dd2fcfe` topic reconciliation. Data Dump baseline support is the current work.
 
 ## Next action
-Run a short, unrelated prose scene with dialogue/pronouns through the isolated import. Compare Qwen3.5-2B with a more capable local analysis model if recall remains weak; decide whether the extra inference cost merits it. Then check Jan/Cydonia injection and a modest Sparkdrive excerpt before any broad import or migration.
+Prototype evidence-backed antecedent resolution for adjacent pronoun sentences and test it against ambiguous cases. Then assess selective 9B perspective extraction for dialogue-heavy sections, rather than switching all imports to 9B. Finally check Jan/Cydonia injection and a modest Sparkdrive excerpt before any broad import or migration.
