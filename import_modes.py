@@ -8,6 +8,7 @@ Never alter source documents; only write inside <project>/.storyteller.
 from __future__ import annotations
 
 import argparse
+import copy
 from contextlib import closing
 import hashlib
 import json
@@ -241,7 +242,12 @@ def request_model(prompt, numbered, previous_summary="", known_entities=""):
     if prompt == DUMP_MEMORY_PROMPT:
         # Bound the structure, not just token count: free-form json_object
         # allowed the small model to emit unbounded records/fields until cut off.
-        data["response_format"] = {"type": "json_object", "schema": DUMP_RESPONSE_SCHEMA}
+        eligible = [int(n) for n in re.findall(r"^\[(\d+)\]", numbered, re.M)]
+        if not eligible:
+            return {"changes": [], "summary": ""}
+        schema = copy.deepcopy(DUMP_RESPONSE_SCHEMA)
+        schema["properties"]["changes"]["items"]["properties"]["source_statement"]["enum"] = eligible
+        data["response_format"] = {"type": "json_object", "schema": schema}
     req = Request(mem.ENDPOINT, data=json.dumps(data).encode("utf-8"),
                   headers={"Content-Type": "application/json"}, method="POST")
     with urlopen(req, timeout=190) as response:
@@ -303,7 +309,7 @@ def review_dump_conflicts(candidate, prior):
     return json.loads(choice["message"]["content"])
 
 
-def validate_records(response, text, whole_file, mode):
+def validate_records(response, text, whole_file, mode, heading_context=()):
     sentences = mem.split_sentences(text)
     good, rejected = [], []
     changes = response.get("changes", [])
@@ -371,7 +377,7 @@ def validate_records(response, text, whole_file, mode):
             continue
         if mode == "dump":
             grounded = dump_grounding.ground(entity, fact, sentences, indexes,
-                                            generic=generic)
+                                            generic=generic, prior_headings=heading_context)
             if grounded is None:
                 rejected.append({"reason": "reference fact is not an attributed source statement",
                                  "detail": fact[:180]})
@@ -598,8 +604,16 @@ def _run_import(project, mode, source, plan=None):
         previous_summary = ""
         known = []
         for doc in docs:
+            source_headings = []
             for i, chunk in enumerate(doc["chunks"]):
                 section_number += 1
+                heading_context = list(source_headings)
+                if mode == "dump":
+                    numbered, source_headings = dump_grounding.numbered_source(
+                        mem.split_sentences(chunk), source_headings)
+                else:
+                    numbered = "\n".join(f"[{n}] {sentence}" for n, sentence in
+                                           enumerate(mem.split_sentences(chunk), 1))
                 existing = db.execute(
                     "SELECT status,summary FROM sections WHERE job_id=? AND section_num=?",
                     (jobid, section_number)).fetchone()
@@ -611,9 +625,6 @@ def _run_import(project, mode, source, plan=None):
                     return {"state": "paused", "completed": done, "total": sections}
                 past = doc["chunks"][i-1][-390:] if i else ""
                 # Cross-section context helps pronouns, but only current text can be cited.
-                numbered = "\n".join(
-                    f"[{index}] {sentence}" for index, sentence in
-                    enumerate(mem.split_sentences(chunk), 1))
                 say(f"Section {section_number}/{sections} / {safe_label(doc['path'].name)}")
                 write_status(project, jobid, current_section=section_number,
                              current_source=str(doc["path"]), state="running")
@@ -623,7 +634,7 @@ def _run_import(project, mode, source, plan=None):
                     raw = request_model(prompt, numbered, context,
                                         ", ".join(dict.fromkeys(known[-14:])))
                     valid, rejected, summary = validate_records(
-                        raw, chunk, doc["text"], mode)
+                        raw, chunk, doc["text"], mode, heading_context)
                     source_ref = f"import:{mode}:{jobid}:section:{section_number}"
                     conflicts = []
                     if mode == "dump":

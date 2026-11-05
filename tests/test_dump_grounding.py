@@ -30,6 +30,35 @@ class GroundingTests(unittest.TestCase):
         self.assertEqual(grounding.ground('Beacon', 'Produces a blue portal.', source, [2]),
                          '### Beacon\n- Produces a blue portal.')
 
+    def test_numbering_excludes_headings_and_preserves_original_indexes(self):
+        source = ['### Beacon', '- Opens blue gates.', '### Lantern', '- Glows red.']
+        numbered, headings = grounding.numbered_source(source)
+        self.assertNotIn('[1]', numbered)
+        self.assertNotIn('[3]', numbered)
+        self.assertIn('[2] - Opens blue gates.', numbered)
+        self.assertIn('[4] - Glows red.', numbered)
+        self.assertEqual(headings, [(3, 'Lantern', '### Lantern')])
+
+    def test_original_heading_carries_across_chunks_but_not_siblings(self):
+        _, headings = grounding.numbered_source(['### Beacon', '- Opens blue gates.'])
+        source = ['- Cannot operate underwater.', '### Lantern', '- Glows red.']
+        numbered, final = grounding.numbered_source(source, headings)
+        self.assertIn('Source heading path: Beacon', numbered)
+        self.assertEqual(grounding.ground('Beacon', 'Cannot operate underwater.', source, [1], prior_headings=headings),
+                         '### Beacon\n- Cannot operate underwater.')
+        self.assertIsNone(grounding.ground('Beacon', 'Glows red.', source, [3], prior_headings=headings))
+        self.assertEqual(headings, [(3, 'Beacon', '### Beacon')])
+        self.assertEqual(final[0][1], 'Lantern')
+
+    def test_plain_section_label_is_context_not_a_fact(self):
+        source = ['### Beacon', 'Visual Effects', '- Glows red.']
+        numbered, _ = grounding.numbered_source(source)
+        self.assertNotIn('[2]', numbered)
+        self.assertIn('[3] - Glows red.', numbered)
+        self.assertIsNone(grounding.ground('Beacon', 'Visual Effects', source, [2]))
+        self.assertFalse(grounding.is_section_label('Nera has silver eyes'))
+        self.assertFalse(grounding.is_section_label('- Silver Eyes'))
+
     def test_question_is_not_an_established_fact(self):
         question = 'Does Nera have silver eyes?'
         self.assertIsNone(grounding.ground('Nera', question, [question], [1]))

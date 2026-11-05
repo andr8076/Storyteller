@@ -24,7 +24,9 @@ import story_state
 
 HOME = Path(__file__).resolve().parent
 MODEL_FILE = HOME / "models" / "qwen3.5-2b-Q4_K_M.gguf"
-MEMORY_PORT = 18885
+MEMORY_PORT = int(os.environ.get("STORYTELLER_MEMORY_PORT", "18885"))
+if not 1 <= MEMORY_PORT <= 65535:
+    raise ValueError("STORYTELLER_MEMORY_PORT must be between 1 and 65535")
 ENDPOINT = f"http://127.0.0.1:{MEMORY_PORT}/v1/chat/completions"
 MODEL_NAME = "qwen3.5-2b-Q4_K_M.gguf"
 CHARACTER_CATEGORIES = {"appearance", "injury", "identity", "status",

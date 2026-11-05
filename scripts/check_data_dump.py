@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import prompt_mode
 import story_state
+import import_modes
 
 
 def main():
@@ -32,6 +33,7 @@ def main():
     parser.add_argument('--start-line', type=int, default=1)
     parser.add_argument('--end-line', type=int)
     parser.add_argument('--timeout', type=int, default=600)
+    parser.add_argument('--crash-restart', action='store_true', help='Kill and restart the test gateway after a committed reference section')
     args = parser.parse_args()
     source = args.source.read_bytes() if args.source else None
     source_hash = hashlib.sha256(source).hexdigest() if source is not None else None
@@ -75,11 +77,13 @@ def main():
             return reply.status, reply.read().decode()
         finally:
             conn.close()
+    def launch():
+        return subprocess.Popen([sys.executable, '-u', str(ROOT / 'storyteller.py'), 'serve',
+                                 '--port', str(port), '--upstream', f'http://127.0.0.1:{writer.server_port}'],
+                                env={**os.environ, 'STORYTELLER_CONFIG': str(config)},
+                                stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     try:
-        process = subprocess.Popen([sys.executable, '-u', str(ROOT / 'storyteller.py'), 'serve',
-                                    '--port', str(port), '--upstream', f'http://127.0.0.1:{writer.server_port}'],
-                                   env={**os.environ, 'STORYTELLER_CONFIG': str(config)},
-                                   stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+        process = launch()
         deadline = time.monotonic() + args.timeout
         while True:
             if process.poll() is not None:
@@ -103,11 +107,21 @@ def main():
             task = prompt_mode.recent_task(project)
             assert Path(task['source']).read_text() == text
             print(label + ': captured, waiting for extraction', flush=True)
+            restart_after = None
+            checkpoint = import_modes.status_path(project, import_modes.prepare(project, 'dump', task['source'])['job_id'])
             while task['status'] not in ('complete', 'error', 'paused'):
                 if time.monotonic() > deadline:
                     raise TimeoutError('Import timed out: ' + label)
                 if process.poll() is not None:
                     raise RuntimeError('Gateway stopped during import')
+                if args.crash_restart and label == 'reference' and restart_after is None and checkpoint.exists():
+                    progress = json.loads(checkpoint.read_text())
+                    if 0 < progress.get('completed', 0) < progress.get('total', 0):
+                        restart_after = progress['completed']
+                        os.killpg(process.pid, signal.SIGKILL)
+                        process.wait(timeout=10)
+                        process = launch()
+                        print(f'reference: crashed and restarted after {restart_after} committed section(s)', flush=True)
                 time.sleep(.5)
                 task = prompt_mode.recent_task(project)
             assert task['status'] == 'complete', task
@@ -154,6 +168,11 @@ def main():
                 assert before == {p.name: p.read_bytes() for p in state_dir.glob('story-state*')}
                 assert requests == []
                 result['conflict_quarantined'] = True
+            if args.crash_restart and label == 'reference':
+                assert restart_after is not None, 'Reference input must have multiple sections for a restart check'
+                result['restarted_after_sections'] = restart_after
+                self_ids = [row['event_id'] for row in rows]
+                assert len(self_ids) == len(set(self_ids)), 'Restart duplicated events'
             report['cases'].append(result)
             print(json.dumps({k: v for k, v in result.items() if k != 'facts_with_evidence'}), flush=True)
         if source is not None:
