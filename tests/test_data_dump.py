@@ -260,6 +260,28 @@ class ImportTests(ProjectCase):
         self.assertFalse((self.folder / '.storyteller/memory/events.jsonl').exists())
         self.assert_position_unchanged()
 
+    def test_conflicting_import_preserves_prior_canon_and_review_source(self):
+        with patch.object(memory_worker, 'is_healthy', return_value=True), patch.object(import_modes, 'request_model', return_value={'changes': [dict(entity='Nera', category='appearance', source_statement=1)]}), patch.object(import_modes, 'review_dump_conflicts', return_value={'decisions': [dict(index=0, relation='conflict', confidence='high')]}):
+            for text in ('Nera has blue eyes.', 'Nera has silver eyes.'):
+                prompt_mode.arm(self.project, 'dump')
+                # Direct file import also supports concise statements below Jan's capture minimum.
+                source = self.folder / ('source-' + text.split()[2] + '.txt')
+                source.write_text(text)
+                result = import_modes.run_import(self.project, 'dump', str(source))
+        self.assertEqual(result['facts'], 0)
+        self.assertEqual(result['rejected'], 1)
+        memory = self.folder / '.storyteller/memory'
+        profile = (memory / 'characters/nera.md').read_text()
+        self.assertIn('blue eyes', profile)
+        self.assertNotIn('silver eyes', profile)
+        review = self.folder / '.storyteller/imports/review.jsonl'
+        self.assertIn('reference conflict requires review', review.read_text())
+        visible = '\n'.join(p.read_text() for p in (memory / 'reference-notes').rglob('*.md'))
+        self.assertNotIn('silver eyes', visible)
+        quarantined = self.folder / '.storyteller/imports/review-sources'
+        self.assertTrue(any('silver eyes' in p.read_text() for p in quarantined.rglob('*.md')))
+        self.assert_position_unchanged()
+
     def test_rearmed_import_does_not_duplicate_world_canon(self):
         raw = {'changes': [dict(entity='Beacon', category='technology',
                 fact='The Beacon cannot open gates.', evidence_numbers=[1])]}

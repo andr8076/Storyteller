@@ -130,6 +130,30 @@ def main():
             result = dict(case=label, status='PASS', characters=len(text), facts=len(rows), rejected=task.get('rejected'),
                           sections=task.get('sections'), continuation_unchanged=True,
                           creative_requests=len(requests), facts_with_evidence=rows)
+            if label == 'unrelated':
+                conflict_text = 'Nera has bright blue eyes.'
+                prompt_mode.arm(project, 'dump')
+                conflict_payload = dict(model=project['alias'], stream=False,
+                                        messages=[dict(role='user', content=conflict_text)])
+                assert request('POST', '/v1/chat/completions', conflict_payload)[0] == 200
+                conflict_task = prompt_mode.recent_task(project)
+                while conflict_task['status'] not in ('complete', 'error', 'paused'):
+                    if time.monotonic() > deadline:
+                        raise TimeoutError('Conflict import timed out')
+                    time.sleep(.5)
+                    conflict_task = prompt_mode.recent_task(project)
+                assert conflict_task['status'] == 'complete', conflict_task
+                assert events.read_bytes() == prior, 'Conflicting fact entered current canon'
+                assert Path(conflict_task['source']).read_text() == conflict_text
+                review_file = Path(project['folder']) / '.storyteller/imports/review.jsonl'
+                conflicts = [json.loads(line) for line in review_file.read_text().splitlines()]
+                assert any(row.get('reason') == 'reference conflict requires review'
+                           and row.get('candidate', {}).get('fact') == conflict_text for row in conflicts), conflicts
+                retrieved = '\n'.join(path.read_text() for path in (memory / 'reference-notes').rglob('*.md'))
+                assert conflict_text not in retrieved
+                assert before == {p.name: p.read_bytes() for p in state_dir.glob('story-state*')}
+                assert requests == []
+                result['conflict_quarantined'] = True
             report['cases'].append(result)
             print(json.dumps({k: v for k, v in result.items() if k != 'facts_with_evidence'}), flush=True)
         if source is not None:

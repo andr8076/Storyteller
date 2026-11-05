@@ -505,17 +505,22 @@ def apply_changes(project, exchange_id, valid, *, timeline=True):
     memory = Path(project["folder"]) / ".storyteller" / "memory"
     memory.mkdir(parents=True, exist_ok=True)
     with memory_lock(memory):
-        changed = []
-        for item in valid:
-            if append_event(memory, project["alias"], exchange_id, item):
-                changed.append(item)
-            saved_path = add_fact_to_profile(memory, exchange_id, item)
-            if saved_path:
-                log(f"{project['alias']}: updated {saved_path}: {item['fact']}")
-        if changed and timeline:
-            refresh_recent_events(memory)
-        return len(changed)
+        return apply_changes_unlocked(project, exchange_id, valid, timeline=timeline)
 
+
+def apply_changes_unlocked(project, exchange_id, valid, *, timeline=True):
+    """Caller must hold memory_lock; used for atomic Data Dump review/commit."""
+    memory = Path(project["folder"]) / ".storyteller" / "memory"
+    changed = []
+    for item in valid:
+        if append_event(memory, project["alias"], exchange_id, item):
+            changed.append(item)
+        saved_path = add_fact_to_profile(memory, exchange_id, item)
+        if saved_path:
+            log(f"{project['alias']}: updated {saved_path}: {item['fact']}")
+    if changed and timeline:
+        refresh_recent_events(memory)
+    return len(changed)
 
 
 class Worker:
