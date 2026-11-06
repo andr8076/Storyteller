@@ -1,5 +1,7 @@
 """Small comparative experiment: world canon versus attributed perspectives."""
 import tempfile
+import io
+import json
 import unittest
 import sqlite3
 import os
@@ -13,6 +15,21 @@ import import_modes
 
 
 class PerspectiveExperiment(unittest.TestCase):
+    def test_import_retries_truncated_model_json_with_more_output_room(self):
+        budgets = []
+        def fake_request(req, timeout):
+            budgets.append(json.loads(req.data)["max_tokens"])
+            response = ({"choices": [{"message": {"content": '{"changes":['},
+                                      "finish_reason": "length"}]} if len(budgets) == 1 else
+                        {"choices": [{"message": {"content": '{"changes":[],"summary":"ok"}'},
+                                      "finish_reason": "stop"}]})
+            return io.BytesIO(json.dumps(response).encode())
+        with patch.object(import_modes, "urlopen", side_effect=fake_request):
+            result = import_modes.request_model("Extract", "[1] Ivo found a key.")
+        self.assertEqual(result["summary"], "ok")
+        self.assertEqual(len(budgets), 2)
+        self.assertGreater(budgets[1], budgets[0])
+
     def test_suspicion_then_discovery_preserves_history_and_latest_state(self):
         with tempfile.TemporaryDirectory() as folder:
             project = {"alias": "fiction", "folder": folder}

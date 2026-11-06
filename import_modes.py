@@ -246,20 +246,29 @@ def request_model(prompt, numbered, previous_summary="", known_entities=""):
         "model": mem.MODEL_NAME,
         "messages": [{"role": "system", "content": prompt},
                      {"role": "user", "content": user_text}],
-        "stream": False, "temperature": 0, "max_tokens": 1350,
+        "stream": False, "temperature": 0,
+        "max_tokens": min(2600, max(1350, 1000 + len(numbered) // 2)),
         "response_format": {"type": "json_object"},
         "chat_template_kwargs": {"enable_thinking": False}
     }
-    req = Request(mem.ENDPOINT, data=json.dumps(data).encode("utf-8"),
-                  headers={"Content-Type": "application/json"}, method="POST")
-    with urlopen(req, timeout=190) as response:
-        raw = json.load(response)
-    choices = raw.get("choices", [])
-    reply = choices[0]["message"]["content"]
-    result = json.loads(reply)
-    if not isinstance(result, dict) or not isinstance(result.get("changes"), list):
-        raise ValueError("Memory model returned invalid JSON changes array")
-    return result
+    for attempt in range(2):
+        req = Request(mem.ENDPOINT, data=json.dumps(data).encode("utf-8"),
+                      headers={"Content-Type": "application/json"}, method="POST")
+        with urlopen(req, timeout=190) as response:
+            raw = json.load(response)
+        choices = raw.get("choices", [])
+        reply = choices[0]["message"]["content"]
+        try:
+            result = json.loads(reply)
+        except json.JSONDecodeError:
+            if attempt or (choices[0].get("finish_reason") != "length" and len(reply) < 2500):
+                raise
+            say("Memory model output was truncated; retrying this section with more room.")
+            data["max_tokens"] = min(3200, data["max_tokens"] + 850)
+            continue
+        if not isinstance(result, dict) or not isinstance(result.get("changes"), list):
+            raise ValueError("Memory model returned invalid JSON changes array")
+        return result
 
 
 def validate_records(response, text, whole_file, mode):
