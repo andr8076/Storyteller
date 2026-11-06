@@ -48,6 +48,26 @@ class PerspectiveExperiment(unittest.TestCase):
                                           lambda s: set(s.lower().split()))
             self.assertIn("Earlier, Joss believes: The star map burned in the fire", history)
 
+    def test_denial_then_observation_preserves_changing_knowledge(self):
+        source = ("Kira said the north gate was open. "
+                  "Oren denied that the north gate was open. "
+                  "In fact, the north gate was sealed. "
+                  "Later, Oren saw the sealed north gate.")
+        suggestions = {"knowledge_changes": [
+            {"character": "Oren", "topic": "north gate status", "fact": "the north gate was open",
+             "certainty": "denies", "evidence_numbers": [2]},
+            {"character": "Oren", "topic": "north gate status", "fact": "the north gate was sealed",
+             "certainty": "knows", "evidence_numbers": [4]}]}
+        entries, errors = knowledge.validate(suggestions, source)
+        self.assertEqual(errors, [])
+        with tempfile.TemporaryDirectory() as folder:
+            project = {"alias": "gate", "folder": folder}
+            self.assertEqual(knowledge.record(project, "scene-1", entries), 2)
+            self.assertEqual(knowledge.current(project)[0]["certainty"], "knows")
+            historical = knowledge.relevant(project, "What did Oren believe about the gate before?",
+                                            lambda s: set(s.lower().split()))
+            self.assertIn("Earlier, Oren denies: the north gate was open", historical)
+
     def test_live_style_dialogue_merges_model_and_literal_history(self):
         scene = ("Lena told Dorian, 'The brass key is in the attic.' "
                  "Dorian believed the brass key was in the attic. "
