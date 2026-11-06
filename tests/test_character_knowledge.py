@@ -162,6 +162,28 @@ class PerspectiveExperiment(unittest.TestCase):
         self.assertEqual(rejected, [])
         self.assertEqual(len(accepted), 1)
 
+    def test_named_observation_recovers_location_after_false_dialogue(self):
+        scene = ("Rhea hid the map behind the furnace. "
+                 "She told Joss, 'The map burned in the fire.' Joss believed her and stopped searching. "
+                 "Later, Joss saw the map behind the furnace and knew she had deceived him.")
+        raw = {"knowledge_changes": [
+            {"character": "Joss", "topic": "the map's location", "fact": "The map burned in the fire",
+             "certainty": "believes", "evidence_numbers": [2]},
+            {"character": "Joss", "topic": "Rhea's statement about the map",
+             "fact": "Rhea deceived him about the map's location",
+             "certainty": "knows", "evidence_numbers": [3]}]}
+        model, rejected = knowledge.validate(raw, scene)
+        combined = knowledge.combine(model, knowledge.explicit_perspectives(scene))
+        self.assertTrue(rejected)
+        self.assertEqual([row["certainty"] for row in combined], ["believes", "knows"])
+        self.assertIn("map was behind the furnace", combined[-1]["fact"])
+        with tempfile.TemporaryDirectory() as folder:
+            project = {"alias": "fiction", "folder": folder}
+            knowledge.record(project, "map-scene", combined)
+            current = knowledge.current(project)
+            self.assertEqual(len(current), 1)
+            self.assertEqual(current[0]["certainty"], "knows")
+
     def test_adjacent_pronoun_discovery_links_to_single_named_subject(self):
         source = ("Lena hid the key in the cellar. She told him, 'The key is in the attic.' "
                   "Dorian believed her and searched the attic. Later, he found the key in the cellar.")
@@ -262,7 +284,7 @@ class PerspectiveExperiment(unittest.TestCase):
             self.assertEqual(status["state"], "complete")
             extra.assert_called_once()
             self.assertEqual([x["certainty"] for x in knowledge.current(project)], ["knows"])
-            self.assertEqual(knowledge.current(project)[0]["fact"], "The map is behind the furnace")
+            self.assertEqual(knowledge.current(project)[0]["fact"], "The map was behind the furnace")
             self.assertEqual(source.read_text().count("Rhea hid"), 1)
 
     def test_perspective_endpoint_rejects_remote_and_skips_plain_dump(self):

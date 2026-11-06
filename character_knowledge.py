@@ -3,6 +3,7 @@
 Inspired by Narra's append-only knowledge states; no data migration is needed.
 """
 import hashlib
+from contextlib import contextmanager
 import os
 import re
 import sqlite3
@@ -126,7 +127,21 @@ def explicit_perspectives(text):
         r"(?:(wrongly|mistakenly)\s+)?"
         r"(suspected|suspects|discovered|learned|realized|recognised|recognized|"
         r"knew|knows|believed|believes)\s+(?:that\s+)?(.+)$")
+    observation = re.compile(
+        r"\b([A-Z][a-z]+)\s+saw\s+(the|a|an)\s+"
+        r"([a-z][\w-]*(?:\s+[a-z][\w-]*){0,2})\s+"
+        r"(behind|beneath|under|inside|in|at)\s+([^,.!?;]+)", re.I)
     for number, sentence in enumerate(mem.split_sentences(text), 1):
+        seen = observation.search(sentence)
+        if seen:
+            character, article, object_name, relation, location = seen.groups()
+            location = re.split(r"\s+and\s+(?:knew|realized|recognized|learned)\b",
+                                location, maxsplit=1, flags=re.I)[0].strip()
+            if 2 <= len(location) <= 100:
+                rows.append({"character": character,
+                             "topic": object_name.split()[-1].lower() + " location",
+                             "fact": f"{article.capitalize()} {object_name} was {relation} {location}",
+                             "certainty": "knows", "evidence_numbers": [number]})
         match = pattern.search(sentence.strip())
         if not match:
             continue
@@ -167,6 +182,7 @@ def combine(model_entries, explicit_entries):
     return selected
 
 
+@contextmanager
 def database(project):
     folder = Path(project["folder"]) / ".storyteller" / "memory"
     folder.mkdir(parents=True, exist_ok=True)
@@ -174,17 +190,24 @@ def database(project):
     if path.is_symlink():
         raise ValueError("Refusing symbolic link for character knowledge")
     db = sqlite3.connect(path, timeout=20)
-    db.execute("""CREATE TABLE IF NOT EXISTS knowledge (
+    try:
+        db.execute("""CREATE TABLE IF NOT EXISTS knowledge (
         sequence INTEGER PRIMARY KEY AUTOINCREMENT,
         id TEXT UNIQUE NOT NULL, character TEXT NOT NULL,
         topic TEXT NOT NULL, fact TEXT NOT NULL, certainty TEXT NOT NULL,
         evidence TEXT NOT NULL, source_id TEXT NOT NULL,
         scope TEXT NOT NULL DEFAULT 'timeline')""")
     # Additive compatibility for an experimental ledger already created.
-    columns = {row[1] for row in db.execute("PRAGMA table_info(knowledge)")}
-    if "scope" not in columns:
-        db.execute("ALTER TABLE knowledge ADD COLUMN scope TEXT NOT NULL DEFAULT 'timeline'")
-    return db
+        columns = {row[1] for row in db.execute("PRAGMA table_info(knowledge)")}
+        if "scope" not in columns:
+            db.execute("ALTER TABLE knowledge ADD COLUMN scope TEXT NOT NULL DEFAULT 'timeline'")
+        yield db
+        db.commit()
+    except BaseException:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 def record(project, source_id, entries, *, timeline=True):
@@ -218,7 +241,8 @@ def reconcile_topic(db, item):
     stage deliberately accepts only near-identical topic words, or identical
     proposition text with a shared topic anchor; no model judgment is guessed.
     """
-    words = lambda text: set(re.findall(r"[\w]+", text.casefold())) - TOPIC_FILLER
+    words = lambda text: (set(re.findall(r"[\w]+", re.sub(
+        r"(?<=\w)['’]s\b", "", text.casefold()))) - TOPIC_FILLER)
     incoming = words(item["topic"])
     candidates = db.execute("""SELECT topic,fact FROM knowledge AS k
         WHERE lower(character)=lower(?) AND sequence=(
