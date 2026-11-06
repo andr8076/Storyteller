@@ -364,4 +364,12 @@ python3 import_modes.py scan --project storyteller-your-project --mode catchup -
 python3 import_modes.py run  --project storyteller-your-project --mode dump    --source /path/to/reference.md
 ```
 
+For an isolated comparison of Catch Up against the experimental event ledger,
+set `STORYTELLER_LEDGER_SHADOW_ENDPOINT` to a locally running
+`http://127.0.0.1:PORT/v1/chat/completions` endpoint before `run`. This adds
+source-cited episodes under that project's `.storyteller/memory/narrative-ledger.md`
+and `.sqlite3`. It does not affect canon, retrieval, or the writing model, and
+an unavailable shadow model does not interrupt Catch Up. Leave the variable
+unset for ordinary imports.
+
 No systemd service or automatic login startup is installed.

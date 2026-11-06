@@ -26,6 +26,7 @@ import memory_worker as mem
 import storyteller
 import story_state
 import character_knowledge
+import narrative_ledger
 
 ROOT = Path(__file__).resolve().parent
 EXTENSIONS = {".txt", ".md", ".markdown"}
@@ -568,6 +569,10 @@ def run_import(project, mode, source, plan=None):
                      started_at=state.get("started_at", stamp()))
         section_number = 0
         perspective_url = perspective_endpoint() if mode == "catchup" else ""
+        # Explicit, local-only shadow experiment. Current canon and retrieval
+        # remain authoritative until the comparison demonstrates an improvement.
+        ledger_url = (os.environ.get("STORYTELLER_LEDGER_SHADOW_ENDPOINT", "").strip()
+                      if mode == "catchup" else "")
         previous_summary = ""
         known = []
         for doc in docs:
@@ -627,6 +632,19 @@ def run_import(project, mode, source, plan=None):
                         (jobid, section_number, str(doc["path"]), i, "done",
                          count, len(rejected), summary))
                     db.commit()
+                    if ledger_url:
+                        try:
+                            proposals = narrative_ledger.propose(chunk, ledger_url)
+                            episodes, ledger_rejected = narrative_ledger.validate(
+                                proposals, chunk)
+                            ledger_saved = narrative_ledger.record(
+                                project, source_ref, episodes)
+                            say(f"  shadow ledger: {ledger_saved} episodes, "
+                                f"{len(ledger_rejected)} proposals rejected")
+                        except Exception as exc:
+                            # This separate experiment must not corrupt an
+                            # already committed, successful Catch Up section.
+                            say(f"  shadow ledger unavailable: {type(exc).__name__}")
                     done += 1
                     facts_total += count
                     rejected_total += len(rejected)

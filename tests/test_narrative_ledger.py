@@ -1,13 +1,76 @@
 """A reversible comparison of event-first records against current profiles."""
 import tempfile
 import unittest
+import os
 from pathlib import Path
+from unittest.mock import patch
 
 import character_knowledge
 import narrative_ledger as ledger
+import import_modes
+import memory_worker as mem
 
 
 class NarrativeLedgerExperiment(unittest.TestCase):
+    def test_opt_in_shadow_catchup_keeps_existing_memory_authoritative(self):
+        source_text = ("Rhea hid the map in the drawer. "
+                       "Rhea told Joss, 'The map burned in the fire.' "
+                       "Joss believed her. Later, Joss found the map in the drawer.")
+        proposals = [
+            {"kind": "action", "actor": "Rhea", "claim": "hid the map in the drawer",
+             "evidence_numbers": [1]},
+            {"kind": "assertion", "actor": "Rhea", "recipient": "Joss",
+             "claim": "The map burned in the fire", "evidence_numbers": [2]},
+            {"kind": "belief", "actor": "Joss", "claim": "The map burned in the fire",
+             "evidence_numbers": [2]},
+            {"kind": "observation", "actor": "Joss", "claim": "found the map in the drawer",
+             "evidence_numbers": [3]},
+        ]
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "chapter.txt"
+            source.write_text(source_text)
+            project = {"alias": "ledger-test", "name": "Ledger test",
+                       "folder": str(root / "project")}
+            endpoint = "http://127.0.0.1:18986/v1/chat/completions"
+            with (patch.dict(os.environ, {"STORYTELLER_LEDGER_SHADOW_ENDPOINT": endpoint,
+                                       "STORYTELLER_PERSPECTIVE_ENDPOINT": ""}),
+                  patch.object(mem, "is_healthy", return_value=True),
+                  patch.object(import_modes, "request_model", return_value={
+                      "changes": [], "summary": "", "knowledge_changes": []}),
+                  patch.object(ledger, "propose", return_value=proposals) as propose):
+                status = import_modes.run_import(project, "catchup", source)
+                again = import_modes.run_import(project, "catchup", source)
+            self.assertEqual(status["state"], "complete")
+            self.assertEqual(again["state"], "complete")
+            propose.assert_called_once_with(source_text, endpoint)
+            self.assertEqual([r["kind"] for r in ledger.timeline(project)],
+                             ["action", "assertion", "belief", "observation"])
+            self.assertEqual([r["kind"] for r in ledger.character_view(
+                project, "Joss", historical=True)], ["belief", "observation"])
+            self.assertEqual(len(character_knowledge.current(project)), 1)
+            self.assertEqual(source.read_text(), source_text)
+
+    def test_shadow_failure_does_not_fail_completed_catchup(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "chapter.txt"
+            source.write_text("Ivo suspected the vault was beneath the lake.")
+            project = {"alias": "ledger-test", "name": "Ledger test",
+                       "folder": str(root / "project")}
+            with (patch.dict(os.environ, {
+                      "STORYTELLER_LEDGER_SHADOW_ENDPOINT":
+                      "http://127.0.0.1:18986/v1/chat/completions",
+                      "STORYTELLER_PERSPECTIVE_ENDPOINT": ""}),
+                  patch.object(mem, "is_healthy", return_value=True),
+                  patch.object(import_modes, "request_model", return_value={
+                      "changes": [], "summary": "", "knowledge_changes": []}),
+                  patch.object(ledger, "propose", side_effect=TimeoutError)):
+                result = import_modes.run_import(project, "catchup", source)
+            self.assertEqual(result["state"], "complete")
+            self.assertEqual(character_knowledge.current(project)[0]["certainty"],
+                             "suspects")
+
     def test_live_witness_output_links_one_claim_to_named_listener(self):
         source = ("Mira watched Rhea place the blue ledger under the floorboard. "
                   "Rhea told Joss, 'The ledger burned.' Later, Joss believed Rhea's claim.")
