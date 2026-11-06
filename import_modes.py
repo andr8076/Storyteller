@@ -637,6 +637,8 @@ def run_import(project, mode, source, plan=None):
                             proposals = narrative_ledger.propose(chunk, ledger_url)
                             episodes, ledger_rejected = narrative_ledger.validate(
                                 proposals, chunk)
+                            episodes = narrative_ledger.combine_perspectives(
+                                episodes, perspectives, chunk)
                             ledger_saved = narrative_ledger.record(
                                 project, source_ref, episodes)
                             say(f"  shadow ledger: {ledger_saved} episodes, "

@@ -12,6 +12,33 @@ import memory_worker as mem
 
 
 class NarrativeLedgerExperiment(unittest.TestCase):
+    def test_existing_validated_perspective_fills_missing_belief_and_witness(self):
+        source = ("Mira watched Rhea place the blue ledger under the floorboard. "
+                  "Rhea told Joss, 'The ledger burned.' Later, Joss believed Rhea's claim.")
+        proposals = [
+            {"kind": "action", "actor": "Rhea",
+             "claim": "placed the blue ledger under the floorboard",
+             "evidence_numbers": [1]},
+            {"kind": "assertion", "actor": "Rhea", "recipient": "Joss",
+             "claim": "The ledger burned", "evidence_numbers": [2]},
+        ]
+        episodes, rejected = ledger.validate(proposals, source)
+        self.assertEqual(rejected, [])
+        focused = {"knowledge_changes": [{"character": "Mira",
+                   "topic": "ledger placement", "fact": "Rhea placed the blue ledger under the floorboard",
+                   "certainty": "knows", "evidence_numbers": [1]}]}
+        perspective, rejected = character_knowledge.validate(focused, source)
+        self.assertEqual(rejected, [])
+        merged = ledger.combine_perspectives(episodes, perspective, source)
+        self.assertEqual([r["kind"] for r in merged],
+                         ["action", "observation", "assertion"])
+        self.assertEqual(merged[1]["evidence"], source.split(". ")[0] + ".")
+        self.assertEqual(ledger.combine_perspectives(merged, perspective, source), merged)
+        # Shared nouns in one sentence do not erase a different proposition.
+        other = dict(perspective[0], fact="Rhea burned the blue ledger under the floorboard")
+        self.assertEqual(len(ledger.combine_perspectives(merged, [other], source)),
+                         len(merged) + 1)
+
     def test_opt_in_shadow_catchup_keeps_existing_memory_authoritative(self):
         source_text = ("Rhea hid the map in the drawer. "
                        "Rhea told Joss, 'The map burned in the fire.' "

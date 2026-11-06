@@ -244,6 +244,54 @@ def validate(proposals, text):
     return accepted, rejected
 
 
+def combine_perspectives(entries, perspectives, text):
+    """Reuse already validated Catch Up perspectives when episode extraction misses one.
+
+    This consumes the existing focused/literal pass; it does not call a model.
+    Only exact source sentences that occur in the perspective's validated
+    evidence may become a ledger citation.
+    """
+    sentences = mem.split_sentences(text)
+    offsets, cursor = [], 0
+    for sentence in sentences:
+        start, end = _source_span(text, sentence, cursor)
+        offsets.append((start, end))
+        cursor = end
+    result = list(entries)
+    for row in perspectives:
+        order = row.get("source_order", 0)
+        if not isinstance(order, int) or not 1 <= order <= len(sentences):
+            continue
+        evidence = row.get("evidence", "")
+        refs = [i for i, sentence in enumerate(sentences, 1)
+                if sentence in evidence and i <= order]
+        if not refs or max(refs) != order:
+            continue
+        actor, claim = row["character"], row["fact"]
+        kind = "observation" if row["certainty"] == "knows" else "belief"
+        content_words = lambda value: set(re.findall(r"[a-z]+", value.casefold())) - {
+            "the", "a", "an", "is", "was", "are", "were", "in", "at", "on",
+            "found", "saw", "watched", "knows", "believed", "believes"}
+        related = content_words(claim)
+        if any(existing["kind"] == kind and
+               existing["actor"].casefold() == actor.casefold() and
+               existing["source_order"] == order and
+               (character_knowledge._claim_words(existing["claim"]) ==
+                character_knowledge._claim_words(claim) or
+                (len(related & content_words(existing["claim"])) >= 2 and
+                 (related <= content_words(existing["claim"]) or
+                  content_words(existing["claim"]) <= related)))
+               for existing in result):
+            continue
+        result.append({"kind": kind, "actor": actor, "recipient": "",
+                       "claim": claim, "topic": row["topic"],
+                       "certainty": row["certainty"], "source_order": order,
+                       "start": offsets[min(refs)-1][0], "end": offsets[order-1][1],
+                       "evidence": evidence})
+    result.sort(key=lambda row: row["source_order"])
+    return result
+
+
 @contextmanager
 def database(project):
     folder = Path(project["folder"]) / ".storyteller" / "memory"
