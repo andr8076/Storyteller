@@ -1,7 +1,7 @@
 # Development status
 
 ## Current objective
-Improve source-backed long-term narrative memory, especially character beliefs and changing knowledge, while preserving the Jan gateway and all three modes.
+Experiment with one provenance-first event ledger for actions, statements, beliefs, and observations; compare it against current separate stores before any migration.
 
 ## Verified implementation
 - Normal Texting retrieves character knowledge and historical events from per-project, cited SQLite indexes. Earlier beliefs are available for explicit historical questions; ordinary requests prefer current state. Profiles and event sources remain human-readable.
@@ -22,9 +22,10 @@ Improve source-backed long-term narrative memory, especially character beliefs a
 - `python -m unittest discover -s tests -q`: 63 passed after the witnessed-action extension. No original manuscript or personal project changed.
 
 ## Architecture decision and limitations
+- Experimental `narrative_ledger.py` now accepts a single local-model episode proposal format, validates numbered original source spans, and writes idempotent append-only records inside an isolated project's `.storyteller` directory. Assertion is distinct from world action; character state can be projected as current or historical. A deterministic deception fixture retained four event kinds where the current literal perspective fallback retained only the final observation; an ambiguous-speech fixture blocked a quoted statement from becoming a world action. These are **scripted proposals**, not evidence that a local model can yet produce the format reliably. 65 local tests pass; live model comparison is next. No production write path or migration was changed.
 - The append-only knowledge ledger adapts the temporal and provenance idea seen in Narra without adopting its entire database and embedding stack. Other frameworks may still offer advantages.
 - 9B improves explicit belief tracking on the two tested scenes, but adds latency and still proposes unsupported claims; keep it optional until a broader quality/cost comparison.
 - Extraction can miss indirect or pronoun-heavy information. Retrieval is largely lexical. The full Sparkdrive manuscript and long-running Jan project behavior remain untested.
 
 ## Next action
-Expand witnessed and indirect knowledge evaluation across unrelated scenes, including unclear lines of sight and long-distance dialogue. Keep the optional 9B pass opt-in until quality and runtime costs justify a default.
+Run the new ledger prompt on two short unrelated scenes using local 9B. Compare source-supported coverage, rejection rate, latency and current/historical answers against the existing extraction path; change the schema or parser if the model cannot produce useful records.
