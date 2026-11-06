@@ -98,8 +98,9 @@ def perspective_endpoint():
 
 def needs_perspective_pass(chunk):
     """Reserve the slower pass for dialogue or changed character perspectives."""
-    return bool(re.search(r"\b(?:told|believed|suspected|lied|deceived|learned|discovered|"
-                          r"realized|recognised|recognized|found out)\b", chunk, re.I))
+    return bool(re.search(r"\b(?:told|believed|suspected|denied|claimed|assumed|forgot|"
+                          r"lied|deceived|learned|discovered|realized|recognised|"
+                          r"recognized|found out)\b", chunk, re.I))
 
 
 def request_perspectives(endpoint, numbered):

@@ -15,6 +15,39 @@ import import_modes
 
 
 class PerspectiveExperiment(unittest.TestCase):
+    def test_pronoun_cannot_be_recorded_as_a_character(self):
+        source = "He realized Rhea had lied. She saw the map behind the furnace."
+        self.assertEqual(knowledge.explicit_perspectives(source), [])
+        candidate = {"character": "He", "topic": "rhea state", "fact": "Rhea had lied",
+                     "certainty": "knows", "evidence_numbers": [1]}
+        accepted, rejected = knowledge.validate({"knowledge_changes": [candidate]}, source)
+        self.assertEqual(accepted, [])
+        self.assertTrue(rejected)
+        self.assertTrue(import_modes.needs_perspective_pass(
+            "Oren denied the gate was open. Kira claimed it was open."))
+
+    def test_named_discovery_updates_earlier_false_dialogue(self):
+        source = ("Rhea hid the star map in the drawer. "
+                  "She told Joss, 'The star map burned in the fire.' "
+                  "Joss believed her and stopped searching. "
+                  "Later, Joss found the star map in the drawer. He realized Rhea had lied.")
+        prior = {"character": "Joss", "topic": "the star map", "fact": "The star map burned in the fire",
+                 "certainty": "believes", "evidence": "She told Joss the map burned",
+                 "source_order": 2}
+        recovered = knowledge.explicit_perspectives(source)
+        self.assertEqual(len(recovered), 1)
+        self.assertEqual((recovered[0]["character"], recovered[0]["certainty"]),
+                         ("Joss", "knows"))
+        with tempfile.TemporaryDirectory() as folder:
+            project = {"alias": "deception", "folder": folder}
+            knowledge.record(project, "scene-1", knowledge.combine([prior], recovered))
+            current = knowledge.current(project)
+            self.assertEqual(len(current), 1)
+            self.assertEqual(current[0]["certainty"], "knows")
+            history = knowledge.relevant(project, "What did Joss believe about the map before?",
+                                          lambda s: set(s.lower().split()))
+            self.assertIn("Earlier, Joss believes: The star map burned in the fire", history)
+
     def test_live_style_dialogue_merges_model_and_literal_history(self):
         scene = ("Lena told Dorian, 'The brass key is in the attic.' "
                  "Dorian believed the brass key was in the attic. "

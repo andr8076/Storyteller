@@ -10,6 +10,8 @@ import sqlite3
 from pathlib import Path
 
 CERTAINTIES = {"knows", "suspects", "believes", "believes_wrongly", "denies", "forgotten"}
+UNNAMED_SUBJECTS = {"he", "she", "they", "him", "her", "them", "his", "hers",
+                    "their", "theirs", "it", "its", "someone", "nobody"}
 TOPIC_FILLER = {"the", "a", "an", "of", "in", "on", "at", "where", "what", "is", "was"}
 MENTAL_VERBS = (r"knows?|knew|learned|discovered|realized|recognised|recognized|"
                 r"suspects?|suspected|believes?|believed|assumes?|assumed|"
@@ -70,7 +72,8 @@ def validate(response, text, *, limit=12):
             continue
         character, topic, fact = character.strip(), topic.strip(), fact.strip()
         if not (2 <= len(character) <= 80 and 3 <= len(topic) <= 100
-                and 7 <= len(fact) <= 260 and mem.slug(character)):
+                and 7 <= len(fact) <= 260 and mem.slug(character)
+                and character.casefold() not in UNNAMED_SUBJECTS):
             rejected.append("invalid knowledge length")
             continue
         if (re.match(r"^(?:he|she|it|they|him|her|them|his|their)\b", fact, re.I)
@@ -128,7 +131,7 @@ def explicit_perspectives(text):
         r"(suspected|suspects|discovered|learned|realized|recognised|recognized|"
         r"knew|knows|believed|believes)\s+(?:that\s+)?(.+)$")
     observation = re.compile(
-        r"\b([A-Z][a-z]+)\s+saw\s+(the|a|an)\s+"
+        r"\b([A-Z][a-z]+)\s+(?:saw|found)\s+(the|a|an)\s+"
         r"([a-z][\w-]*(?:\s+[a-z][\w-]*){0,2})\s+"
         r"(behind|beneath|under|inside|in|at)\s+([^,.!?;]+)", re.I)
     for number, sentence in enumerate(mem.split_sentences(text), 1):
@@ -276,6 +279,15 @@ def reconcile_topic(db, item):
               and _subject_head(item["fact"]) == _subject_head(fact)
               and _subject_head(fact)):
             matches.append(topic)
+        elif (_subject_head(item["fact"]) and
+              _subject_head(item["fact"]) == _subject_head(fact) and
+              (incoming <= words(_subject_head(fact)) or
+               existing <= words(_subject_head(fact))) and
+              incoming & existing):
+            # A model's bare "the star map" topic can describe an earlier
+            # belief about the same object's fate or location. Never merge
+            # two differently qualified topics on the object alone.
+            matches.append(topic)
         elif (incoming & existing and
               re.sub(r"\W+", " ", fact.casefold()).strip() ==
               re.sub(r"\W+", " ", item["fact"].casefold()).strip()):
@@ -285,7 +297,7 @@ def reconcile_topic(db, item):
 
 def _subject_head(fact):
     match = re.match(r"(?:the|a|an)\s+([a-z][\w-]*(?:\s+[a-z][\w-]*){0,3})\s+"
-                     r"(?:is|was|are|were|has|had)\b", fact, re.I)
+                     r"(?:is|was|are|were|has|had|burned|broke|fell|vanished)\b", fact, re.I)
     return match.group(1).casefold() if match else ""
 
 
