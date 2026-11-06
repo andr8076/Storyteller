@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 import character_knowledge
+import narrative_projection
 import memory_worker as mem
 
 KINDS = {"action", "state", "assertion", "belief", "observation"}
@@ -269,25 +270,23 @@ def combine_perspectives(entries, perspectives, text):
             continue
         actor, claim = row["character"], row["fact"]
         kind = "observation" if row["certainty"] == "knows" else "belief"
-        content_words = lambda value: set(re.findall(r"[a-z]+", value.casefold())) - {
-            "the", "a", "an", "is", "was", "are", "were", "in", "at", "on",
-            "found", "saw", "watched", "knows", "believed", "believes"}
-        related = content_words(claim)
-        if any(existing["kind"] == kind and
-               existing["actor"].casefold() == actor.casefold() and
-               existing["source_order"] == order and
-               (character_knowledge._claim_words(existing["claim"]) ==
-                character_knowledge._claim_words(claim) or
-                (len(related & content_words(existing["claim"])) >= 2 and
-                 (related <= content_words(existing["claim"]) or
-                  content_words(existing["claim"]) <= related)))
-               for existing in result):
-            continue
-        result.append({"kind": kind, "actor": actor, "recipient": "",
-                       "claim": claim, "topic": row["topic"],
-                       "certainty": row["certainty"], "source_order": order,
-                       "start": offsets[min(refs)-1][0], "end": offsets[order-1][1],
-                       "evidence": evidence})
+        candidate = {"kind": kind, "actor": actor, "recipient": "",
+                     "claim": claim, "topic": row["topic"],
+                     "certainty": row["certainty"], "source_order": order,
+                     "start": offsets[min(refs)-1][0], "end": offsets[order-1][1],
+                     "evidence": evidence}
+        matches = [i for i, existing in enumerate(result)
+                   if existing["kind"] == kind and
+                   existing["actor"].casefold() == actor.casefold() and
+                   existing["source_order"] == order and
+                   existing["certainty"] == candidate["certainty"] and
+                   narrative_projection.equivalent(existing, candidate)]
+        if matches:
+            for index in matches:
+                if narrative_projection.prefer_complete(result[index], candidate):
+                    result[index] = candidate
+        else:
+            result.append(candidate)
     result.sort(key=lambda row: row["source_order"])
     return result
 
@@ -349,12 +348,8 @@ def character_view(project, actor, *, historical=False):
     """Project current attributed knowledge, keeping prior states on demand."""
     rows = [r for r in timeline(project) if r["actor"].casefold() == actor.casefold()
             and r["kind"] in {"belief", "observation"}]
-    if historical:
-        return rows
-    latest = {}
-    for row in rows:
-        latest[row["topic"].casefold()] = row
-    return list(latest.values())
+    projected = narrative_projection.project(rows)
+    return projected if historical else [r for r in projected if r["status"] == "current"]
 
 
 def export_markdown(project):

@@ -173,8 +173,10 @@ class NarrativeLedgerExperiment(unittest.TestCase):
             project = {"alias": "isolated", "folder": folder}
             self.assertEqual(ledger.record(project, "scene-1", entries), 4)
             self.assertEqual(ledger.record(project, "scene-1", entries), 0)
-            self.assertEqual(len(ledger.character_view(project, "Joss")), 1)
-            self.assertEqual(ledger.character_view(project, "Joss")[0]["kind"], "observation")
+            # Finding the map does not explicitly establish that it never
+            # burned. A shared model topic cannot erase either proposition.
+            self.assertEqual(len(ledger.character_view(project, "Joss")), 2)
+            self.assertEqual(ledger.character_view(project, "Joss")[-1]["kind"], "observation")
             self.assertEqual(len(ledger.character_view(project, "Joss", historical=True)), 2)
             human = (Path(folder)/".storyteller"/"memory"/"narrative-ledger.md").read_text()
             self.assertIn("**ASSERTION** Rhea to Joss", human)
