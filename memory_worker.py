@@ -161,6 +161,19 @@ def perspective_statement(fact):
         r"recogniz(?:e|es|ed)|knows?|knew|thought)\b", fact, re.I))
 
 
+def durable_identity_statement(fact):
+    """Keep model-labelled identity profiles about the person, not an action.
+
+    A scene action can still be recorded as an event; it must not be promoted
+    to a timeless identity merely because the model chose that category.
+    """
+    if re.search(r"\b(?:is|was)\s+(?:a|the)\s+(?:character|person)\s+who\b", fact, re.I):
+        return False
+    if re.search(r"\b(?:is|was)\s+(?:being|currently|now)\b", fact, re.I):
+        return False
+    return bool(re.search(r"\b(?:is|was|are|were|has|had|named|called|born)\b", fact, re.I))
+
+
 def minimal_evidence(sentences, refs, fact):
     """Reduce overlong model citations to <=3 source sentences, or reject.
 
@@ -434,6 +447,9 @@ def extract(scene, *, include_knowledge=False, author_message=False):
                 continue
             if category != "event" and perspective_statement(fact):
                 rejected.append(("character perspective is not a durable identity fact", fact[:150]))
+                continue
+            if category == "identity" and not durable_identity_statement(fact):
+                rejected.append(("transient action miscategorised as identity", fact[:150]))
                 continue
             if not confirm_anchors(fact, evidence):
                 rejected.append(("fact missing anatomical/permanence anchors", fact[:150]))

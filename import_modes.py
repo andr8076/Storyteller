@@ -356,6 +356,10 @@ def validate_records(response, text, whole_file, mode):
         if category != "event" and mem.perspective_statement(fact):
             rejected.append({"reason": "perspective proposed as world canon", "detail": fact[:180]})
             continue
+        if category == "identity" and not mem.durable_identity_statement(fact):
+            rejected.append({"reason": "transient action miscategorised as identity",
+                             "detail": fact[:180]})
+            continue
         # The model may use generic subject labels for universe rules.
         generic = category in ("world", "technology", "place", "event") and entity.lower() in (
             "universe", "world", "setting", "story", "timeline")

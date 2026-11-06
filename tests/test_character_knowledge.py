@@ -15,6 +15,25 @@ import import_modes
 
 
 class PerspectiveExperiment(unittest.TestCase):
+    def test_scene_actions_cannot_become_timeless_identity(self):
+        scene = ("Demi was being tracked by the Director. "
+                 "Amos removed the power cell from his pulse rifle. "
+                 "Amos inspected its contacts. Demi is the ship's AI.")
+        proposals = [
+            ("Demi", "Demi is a character who is being tracked by the Director", 1),
+            ("Amos", "Amos is the character who removed the power cell", 2),
+            ("Amos", "Amos inspected its contacts", 3),
+            ("Demi", "Demi is the ship's AI", 4),
+        ]
+        response = {"changes": [{"entity": name, "category": "identity", "fact": fact,
+                    "evidence_numbers": [number], "confidence": "high"}
+                    for name, fact, number in proposals]}
+        canon, rejected, _ = import_modes.validate_records(response, scene, scene, "catchup")
+        self.assertFalse(any(row["category"] == "identity" and
+                         row["entity"] == "Amos" for row in canon))
+        self.assertEqual(sum("transient action" in row["reason"] for row in rejected), 3)
+        self.assertTrue(mem.durable_identity_statement("Demi is the ship's AI"))
+
     def test_import_splits_truncated_model_json_preserving_original_citations(self):
         requests = []
         def fake_request(req, timeout):
