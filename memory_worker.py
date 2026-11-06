@@ -417,6 +417,19 @@ def extract(scene, *, include_knowledge=False, author_message=False):
         results = response["changes"]
         if include_knowledge:
             found, problems = character_knowledge.validate(response, chunk)
+            # Normal Texting uses the same optional, source-validated dialogue
+            # pass as Catch Up. The worker runs after the outgoing memory
+            # snapshot, so these states first appear on the next request.
+            import import_modes
+            endpoint = import_modes.perspective_endpoint()
+            if endpoint and import_modes.needs_perspective_pass(chunk):
+                try:
+                    focused = import_modes.request_perspectives(endpoint, numbered)
+                    extra, errors = character_knowledge.validate(focused, chunk)
+                    found = character_knowledge.combine(found, extra)
+                    problems.extend(errors)
+                except (URLError, TimeoutError, ValueError, KeyError, IndexError) as exc:
+                    log(f"Optional perspective pass unavailable: {type(exc).__name__}")
             perspectives.extend(character_knowledge.combine(
                 found, character_knowledge.explicit_perspectives(chunk)))
             rejected.extend(("knowledge: " + reason, "") for reason in problems)

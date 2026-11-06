@@ -7,11 +7,44 @@ from pathlib import Path
 from unittest.mock import patch
 
 import memory_worker as mem
+import import_modes
 import storyteller
 import storyteller_ui
 
 
 class NormalLearningTests(unittest.TestCase):
+    def test_normal_dialogue_uses_optional_model_and_next_request_snapshot(self):
+        with tempfile.TemporaryDirectory() as folder:
+            project = {"alias": "fiction", "folder": folder}
+            message = "Ivo believed the gate was open, but in fact it was sealed."
+            prompt = [{"role": "user", "content": message}]
+            storyteller.ensure_memory(Path(folder))
+            before, _ = storyteller.select_memory(project, prompt)
+            self.assertNotIn("Ivo believes", before)
+            storyteller.record_user_message(project, prompt)
+            focused = {"knowledge_changes": [{"character": "Ivo", "topic": "gate state",
+                "fact": "The gate was open", "certainty": "believes_wrongly",
+                "evidence_numbers": [1]}]}
+            with patch.dict("os.environ", {"STORYTELLER_PERSPECTIVE_ENDPOINT":
+                             "http://127.0.0.1:18986/v1/chat/completions"}), \
+                 patch.object(mem, "request_json", return_value={"changes": []}), \
+                 patch.object(import_modes, "request_perspectives", return_value=focused) as extra:
+                mem.Worker([]).process_project(project)
+            extra.assert_called_once()
+            after, _ = storyteller.select_memory(project, prompt)
+            self.assertIn("Ivo believes wrongly: The gate was open", after)
+
+    def test_normal_optional_model_failure_preserves_base_extraction(self):
+        source = "Ivo suspected the vault was beneath the lake."
+        with patch.dict("os.environ", {"STORYTELLER_PERSPECTIVE_ENDPOINT":
+                         "http://127.0.0.1:18986/v1/chat/completions"}), \
+             patch.object(mem, "request_json", return_value={"changes": []}), \
+             patch.object(import_modes, "request_perspectives", side_effect=TimeoutError):
+            canon, rejected, knowledge = mem.extract(source, include_knowledge=True)
+        self.assertEqual(canon, [])
+        self.assertEqual(rejected, [])
+        self.assertEqual(knowledge[0]["certainty"], "suspects")
+
     def test_user_fact_becomes_available_only_after_current_snapshot(self):
         with tempfile.TemporaryDirectory() as folder, tempfile.TemporaryDirectory() as other:
             project = {"alias": "world-one", "name": "World One", "folder": folder,
