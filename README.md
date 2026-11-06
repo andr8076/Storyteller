@@ -25,6 +25,19 @@ is not automatically imported as canon. Use **Catch Up (C)** for existing
 history, or **Dump Info (I)** to catalogue author-provided facts. Both process
 the text directly, without asking Cydonia to rewrite it.
 
+In normal chat, explicit facts in the latest user message are queued for
+separate analysis after memory for that request has been selected. They can
+become available to later requests; the current request never receives its
+own newly extracted facts as established memory. Writing instructions and
+questions are excluded from this author-message analysis where recognizable.
+For larger pre-existing story text, use Catch Up instead.
+
+Press **M** in the terminal panel to turn learning from generated writer
+responses on or off for the selected project. It is on by default for existing
+projects, and the setting persists across launches. Author-message learning
+continues in either setting. Turning it off affects future responses; it does
+not erase previously saved memory or stop the story continuation point.
+
 Storyteller ignores chat titles, scene analyses, and factual Q&A for automatic
 canon updates. Scenes skipped by older detector versions are safely reconsidered
 after upgrading, without duplicating previously verified entries.
@@ -85,6 +98,7 @@ at login.
 | V | Browse rejected or uncertain imported facts |
 | T | Show the current story continuation point |
 | P | Edit, preview and toggle optional per-project prompt prefix/suffix |
+| M | Toggle learning from generated writer responses for this project |
 | Enter | Show project information and analysis/review counts |
 | S | Start or stop the gateway and CPU memory model |
 | L | View recent activity |

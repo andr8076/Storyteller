@@ -259,6 +259,7 @@ def record_complete(project, messages, response, selected):
     entry = {"utc": datetime.now(timezone.utc).isoformat(),
              "project": project["alias"], "request_hash": request_hash,
              "last_user_message": last_user, "assistant_response": response,
+             "learn_response": project.get("learn_from_responses", True),
              "memory_files_used": selected, "status": "pending_analysis"}
     # One append per completed exchange, never modifying the original story.
     target = Path(project["folder"]) / ".storyteller" / "pending-exchanges.jsonl"
@@ -269,6 +270,26 @@ def record_complete(project, messages, response, selected):
         finally:
             os.close(fd)
     return entry
+
+
+def record_user_message(project, messages):
+    """Queue only the latest normal user prompt after retrieval has taken its snapshot."""
+    last_user = next((text_from_content(m.get("content")) for m in reversed(messages)
+                      if isinstance(m, dict) and m.get("role") == "user"), "")
+    if not last_user.strip():
+        return
+    request_hash = hashlib.sha256(json.dumps(messages, sort_keys=True, ensure_ascii=False)
+                                  .encode("utf-8")).hexdigest()
+    entry = {"project": project["alias"], "request_hash": request_hash,
+             "source_kind": "user_prompt", "last_user_message": last_user}
+    target = Path(project["folder"]) / ".storyteller" / "pending-exchanges.jsonl"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with LOCK:
+        fd = os.open(target, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        try:
+            os.write(fd, (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8"))
+        finally:
+            os.close(fd)
 
 
 class Gateway(BaseHTTPRequestHandler):
@@ -411,6 +432,9 @@ class Gateway(BaseHTTPRequestHandler):
             data["model"] = project["model"]
             data["messages"] = ([{"role": "system", "content": injection}] if injection
                                 else []) + forwarded
+            # Extraction may run while the writer responds, but this request's
+            # injected memory was already selected from the preceding snapshot.
+            record_user_message(project, messages)
             headers = {"Content-Type": "application/json"}
             authorization = self.headers.get("Authorization")
             if authorization:

@@ -91,6 +91,22 @@ Scene: 'Mara wrongly believed the gate was open, but in fact it was sealed.'
 "fact":"The gate was open","certainty":"believes_wrongly","evidence_numbers":[1]}]}
 Return valid JSON only. /no_think"""
 
+USER_PROMPT = """You catalogue established facts supplied by the author in a normal
+fiction-writing message. Extract explicit declarations about the fictional world,
+characters, and their knowledge, with numbered sentence evidence. The author's
+requests to write, continue, imagine, revise, or answer are instructions, not
+events that have happened. Do not turn a proposed future scene into canon.
+Use only explicit, named, source-backed statements. Return JSON with arrays:
+{"changes":[{"entity":"Demi","category":"appearance","fact":"Demi has blue eyes",
+"evidence_numbers":[1],"confidence":"high"}],"knowledge_changes":[]}
+Categories: appearance, injury, identity, status, relationship, location,
+possession, world, technology, place, event. Character perspectives instead use
+knowledge_changes with character, topic, self-contained fact, certainty
+(knows, suspects, believes, believes_wrongly, denies, forgotten), and
+evidence_numbers. Beliefs are not world facts. Only source sentences may be cited.
+Return empty arrays when the message supplies no established facts.
+JSON only. /no_think"""
+
 def iso_now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -212,12 +228,12 @@ def is_healthy():
     except (URLError, OSError, ValueError):
         return False
 
-def request_json(numbered_scene):
+def request_json(numbered_scene, *, author_message=False):
     payload = {
         "model": MODEL_NAME,
         "messages": [
-            {"role": "system", "content": PROMPT},
-            {"role": "user", "content": "Completed fictional scene (numbered sentences):\n" + numbered_scene}
+            {"role": "system", "content": USER_PROMPT if author_message else PROMPT},
+            {"role": "user", "content": "Source (numbered sentences):\n" + numbered_scene}
         ],
         "temperature": 0,
         "max_tokens": 1150,
@@ -354,7 +370,19 @@ def evidence_supports_claim(entity, fact, evidence, *, observer_guard=True):
         1, (len(claim_words) * 3 + 4) // 5)
 
 
-def extract(scene, *, include_knowledge=False):
+def authorial_statements(message):
+    """Leave source clauses intact while excluding obvious writing requests."""
+    instruction = re.compile(r"^(?:please\s+)?(?:write|continue|create|imagine|suppose|"
+                             r"describe|show|tell|make|revise|rewrite|summarize|"
+                             r"generate|explain|analyze|translate|name|title|list|give|"
+                             r"can|could|would|what|why|how|should|have\s+\w+|"
+                             r"in\s+the\s+next\s+scene|"
+                             r"for\s+the\s+next\s+scene|i\s+want|let's)\b", re.I)
+    return " ".join(sentence for sentence in split_sentences(message)
+                    if not instruction.match(sentence) and not sentence.rstrip().endswith("?"))
+
+
+def extract(scene, *, include_knowledge=False, author_message=False):
     validated, rejected, perspectives = [], [], []
     if not isinstance(scene, str) or not scene.strip():
         return (validated, rejected, perspectives) if include_knowledge else (validated, rejected)
@@ -368,7 +396,8 @@ def extract(scene, *, include_knowledge=False):
             log(f"Analyzing chapter section {chunk_index + 1}/{len(chunks)}")
         sentences = split_sentences(chunk)
         numbered = "\n".join(f"[{i}] {part}" for i, part in enumerate(sentences, 1))
-        response = request_json(numbered)
+        response = (request_json(numbered, author_message=True) if author_message
+                    else request_json(numbered))
         # Existing callers/tests may supply the original changes-only form.
         if isinstance(response, list):
             response = {"changes": response}
@@ -610,12 +639,44 @@ class Worker:
                     continue
                 if exchange.get("project") != project["alias"]:
                     continue
-                scene = exchange.get("assistant_response", "")
-                if not isinstance(scene, str) or not scene:
-                    continue
                 identifier = hashlib.sha256(line.encode()).hexdigest()
                 prior = db.execute("SELECT status FROM processed WHERE id=?",
                                    (identifier,)).fetchone()
+                if exchange.get("source_kind") == "user_prompt":
+                    if prior:
+                        continue
+                    source = authorial_statements(exchange.get("last_user_message", ""))
+                    if not source.strip():
+                        db.execute("INSERT INTO processed VALUES (?, ?, ?, ?, ?)",
+                                   (identifier, "ignored", 0, "no declarative source", iso_now()))
+                        db.commit()
+                        continue
+                    try:
+                        changes, rejects, perspectives = extract(
+                            source, include_knowledge=True, author_message=True)
+                        count = apply_changes(project, identifier, changes)
+                        count += character_knowledge.record(project, identifier, perspectives)
+                        if rejects:
+                            with open(base / "review.jsonl", "a", encoding="utf-8") as f:
+                                for reason, detail in rejects:
+                                    f.write(json.dumps({"source": identifier, "reason": reason,
+                                                        "detail": detail}) + "\n")
+                        db.execute("INSERT INTO processed VALUES (?, ?, ?, ?, ?)",
+                                   (identifier, "done", count, str(len(rejects)) + " rejected", iso_now()))
+                        db.commit()
+                        log(f"{project['alias']}: author message saved {count} fact(s)")
+                    except Exception as exc:
+                        log(f"{project['alias']}: author message extraction failed: {type(exc).__name__}: {str(exc)[:120]}")
+                    continue
+                scene = exchange.get("assistant_response", "")
+                if not isinstance(scene, str) or not scene:
+                    continue
+                if exchange.get("learn_response", True) is False:
+                    if not prior:
+                        db.execute("INSERT INTO processed VALUES (?, ?, ?, ?, ?)",
+                                   (identifier, "disabled", 0, "reply learning off", iso_now()))
+                        db.commit()
+                    continue
                 # Previously skipped scenes may have been misclassified by an
                 # older version. Recheck ONLY skipped rows using the current
                 # classifier; already processed canon is never duplicated.
