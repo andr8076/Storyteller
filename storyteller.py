@@ -10,6 +10,7 @@ import http.client
 import json
 import os
 import re
+import sqlite3
 import signal
 import time
 import sys
@@ -23,6 +24,7 @@ import story_state
 import prompt_mode
 import prompt_affixes
 import memory_retrieval
+import event_history
 import character_knowledge
 
 ROOT = Path(__file__).resolve().parent
@@ -190,7 +192,8 @@ def select_memory(project, messages):
         files.append(recent)
     state_file = story_state.location(project) / "story-state.md"
     ledger_file = root / "character-knowledge.sqlite3"
-    if not files and not state_file.is_file() and not ledger_file.is_file():
+    if (not files and not state_file.is_file() and not ledger_file.is_file()
+            and not (root / "events.jsonl").is_file()):
         return "", []
     parts, selected = [], []
     remaining = MEMORY_MAX
@@ -207,6 +210,20 @@ def select_memory(project, messages):
         parts.append("### CHARACTER PERSPECTIVES (attributed; beliefs are not world facts)\n" + perspective)
         selected.append("memory/character-knowledge.sqlite3")
         remaining -= len(perspective)
+    latest_user = next((text_from_content(m.get("content")) for m in reversed(messages)
+                        if isinstance(m, dict) and m.get("role") == "user"), "")
+    try:
+        historical = event_history.relevant(project, latest_user, terms,
+                                            limit=min(remaining, 1600))
+    except (sqlite3.Error, OSError, ValueError) as exc:
+        print(f"[Storyteller] historical event index unavailable: {type(exc).__name__}",
+              flush=True)
+        historical = ""
+    if historical:
+        parts.append("### MATCHED PAST EVENTS (source-backed; earlier than the current story position)\n"
+                     + historical)
+        selected.append("memory/events.jsonl")
+        remaining -= len(historical)
     for path in files:
         body = profile_bodies.get(path)
         if body is None:

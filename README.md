@@ -20,6 +20,11 @@ accepted only when the cited original sentences support them. Rejected
 suggestions go to `.storyteller/review.jsonl`; no claim is made that every
 fact can be extracted reliably.
 
+Older established events remain searchable after they leave the short recent
+events summary. A local, rebuildable SQLite search index over the project's
+append-only event log selects a few matching past events with source evidence;
+it does not change the original event log or the current continuation point.
+
 A pre-existing chapter pasted as a **user message** in an ordinary Jan chat
 is not automatically imported as canon. Use **Catch Up (C)** for existing
 history, or **Dump Info (I)** to catalogue author-provided facts. Both process
