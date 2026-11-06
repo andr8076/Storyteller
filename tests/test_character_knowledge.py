@@ -15,20 +15,24 @@ import import_modes
 
 
 class PerspectiveExperiment(unittest.TestCase):
-    def test_import_retries_truncated_model_json_with_more_output_room(self):
-        budgets = []
+    def test_import_splits_truncated_model_json_preserving_original_citations(self):
+        requests = []
         def fake_request(req, timeout):
-            budgets.append(json.loads(req.data)["max_tokens"])
-            response = ({"choices": [{"message": {"content": '{"changes":['},
-                                      "finish_reason": "length"}]} if len(budgets) == 1 else
-                        {"choices": [{"message": {"content": '{"changes":[],"summary":"ok"}'},
-                                      "finish_reason": "stop"}]})
+            requests.append(json.loads(req.data))
+            content = ('{"changes":[' if len(requests) == 1 else
+                       json.dumps({"changes": [{"evidence_numbers": [1 if len(requests) == 2 else 4]}],
+                                   "summary": "ok"}))
+            response = {"choices": [{"message": {"content": content},
+                                     "finish_reason": "length" if len(requests) == 1 else "stop"}]}
             return io.BytesIO(json.dumps(response).encode())
         with patch.object(import_modes, "urlopen", side_effect=fake_request):
-            result = import_modes.request_model("Extract", "[1] Ivo found a key.")
-        self.assertEqual(result["summary"], "ok")
-        self.assertEqual(len(budgets), 2)
-        self.assertGreater(budgets[1], budgets[0])
+            result = import_modes.request_model("Extract", "[1] Ivo found a key.\n"
+                "[2] He opened the door.\n[3] Mara watched.\n[4] She went home.")
+        self.assertEqual([x["evidence_numbers"] for x in result["changes"]], [[1], [4]])
+        self.assertEqual(len(requests), 3)
+        self.assertTrue(all(request["max_tokens"] == 1350 for request in requests))
+        self.assertIn("[2] He opened", requests[2]["messages"][1]["content"])
+        self.assertIn("[4] She went", requests[2]["messages"][1]["content"])
 
     def test_suspicion_then_discovery_preserves_history_and_latest_state(self):
         with tempfile.TemporaryDirectory() as folder:

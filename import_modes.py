@@ -233,7 +233,39 @@ def database(project):
     return conn
 
 
-def request_model(prompt, numbered, previous_summary="", known_entities=""):
+def _split_numbered(numbered):
+    """Split at original sentence labels, retaining one antecedent as overlap."""
+    lines = re.split(r"\n(?=\[\d+\] )", numbered)
+    if len(lines) < 3:
+        return None
+    middle = len(numbered) // 2
+    pivot = min(range(2, len(lines)),
+                key=lambda index: abs(len("\n".join(lines[:index])) - middle))
+    left = "\n".join(lines[:pivot])
+    right = "\n".join(lines[max(0, pivot-1):])
+    return (left, right) if max(len(left), len(right)) < len(numbered) else None
+
+
+def _request_pieces(prompt, pieces, previous_summary, known_entities, depth):
+    left = request_model(prompt, pieces[0], previous_summary, known_entities,
+                         _depth=depth+1)
+    left_summary = left.get("summary", "")
+    right = request_model(prompt, pieces[1], left_summary if isinstance(left_summary, str) else "",
+                          known_entities,
+                          _depth=depth+1)
+    knowledge = lambda result: (result.get("knowledge_changes", [])
+                                if isinstance(result.get("knowledge_changes", []), list) else [])
+    return {"changes": left["changes"] + right["changes"],
+            "knowledge_changes": knowledge(left) + knowledge(right),
+            "summary": " ".join(x for x in (left.get("summary", ""),
+                                              right.get("summary", ""))
+                                if isinstance(x, str) and x)[:850]}
+
+
+def request_model(prompt, numbered, previous_summary="", known_entities="", *, _depth=0):
+    pieces = _split_numbered(numbered) if _depth < 3 and len(numbered) > 900 else None
+    if pieces:
+        return _request_pieces(prompt, pieces, previous_summary, known_entities, _depth)
     context = []
     if previous_summary:
         context.append("Previous section's plot summary (context only, not evidence):\n"
@@ -246,29 +278,27 @@ def request_model(prompt, numbered, previous_summary="", known_entities=""):
         "model": mem.MODEL_NAME,
         "messages": [{"role": "system", "content": prompt},
                      {"role": "user", "content": user_text}],
-        "stream": False, "temperature": 0,
-        "max_tokens": min(2600, max(1350, 1000 + len(numbered) // 2)),
+        "stream": False, "temperature": 0, "max_tokens": 1350,
         "response_format": {"type": "json_object"},
         "chat_template_kwargs": {"enable_thinking": False}
     }
-    for attempt in range(2):
-        req = Request(mem.ENDPOINT, data=json.dumps(data).encode("utf-8"),
-                      headers={"Content-Type": "application/json"}, method="POST")
-        with urlopen(req, timeout=190) as response:
-            raw = json.load(response)
-        choices = raw.get("choices", [])
-        reply = choices[0]["message"]["content"]
-        try:
-            result = json.loads(reply)
-        except json.JSONDecodeError:
-            if attempt or (choices[0].get("finish_reason") != "length" and len(reply) < 2500):
-                raise
-            say("Memory model output was truncated; retrying this section with more room.")
-            data["max_tokens"] = min(3200, data["max_tokens"] + 850)
-            continue
-        if not isinstance(result, dict) or not isinstance(result.get("changes"), list):
-            raise ValueError("Memory model returned invalid JSON changes array")
-        return result
+    req = Request(mem.ENDPOINT, data=json.dumps(data).encode("utf-8"),
+                  headers={"Content-Type": "application/json"}, method="POST")
+    with urlopen(req, timeout=190) as response:
+        raw = json.load(response)
+    choices = raw.get("choices", [])
+    reply = choices[0]["message"]["content"]
+    try:
+        result = json.loads(reply)
+    except json.JSONDecodeError:
+        pieces = _split_numbered(numbered) if _depth < 3 else None
+        if not pieces:
+            raise
+        say("Memory model output was truncated; splitting the section.")
+        return _request_pieces(prompt, pieces, previous_summary, known_entities, _depth)
+    if not isinstance(result, dict) or not isinstance(result.get("changes"), list):
+        raise ValueError("Memory model returned invalid JSON changes array")
+    return result
 
 
 def validate_records(response, text, whole_file, mode):
