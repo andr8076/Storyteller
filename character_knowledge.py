@@ -49,6 +49,17 @@ def _grounded_claim(character, certainty, fact, sentence):
     cue = re.search(rf"{name}(?:\s+\w+){{0,3}}\s+(?:{STATE_VERBS[certainty]})\b",
                     sentence, re.I)
     if not cue:
+        # Witnessing an explicit action can establish knowledge of that
+        # action, even without the narrator saying "Mira knew". A vague
+        # "Mira watched" does not supply the proposed event's details.
+        if certainty == "knows":
+            witnessed = re.search(
+                rf"{name}\s+(?:watched|witnessed|observed|saw)\s+"
+                r"([A-Z][a-z]+\s+[^.!?;]+)", sentence)
+            if witnessed and not re.search(
+                    r"\b(?:did not|could not|couldn't|without)\s+(?:see|seeing|observe|observing)\b",
+                    sentence, re.I):
+                return _content_supported(fact, witnessed.group(1))
         return False
     following = re.split(r"\b(?:but\s+in\s+fact|in\s+fact|but\s+actually|actually|but)\b|;",
                          sentence[cue.end():], maxsplit=1, flags=re.I)[0]

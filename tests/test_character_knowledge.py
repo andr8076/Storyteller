@@ -15,6 +15,34 @@ import import_modes
 
 
 class PerspectiveExperiment(unittest.TestCase):
+    def test_witnessed_action_becomes_source_backed_character_knowledge(self):
+        source = "Mira watched Rhea place the blue ledger under the floorboard."
+        row = {"character": "Mira", "topic": "Rhea's action",
+               "fact": "Rhea placed the blue ledger under the floorboard",
+               "certainty": "knows", "evidence_numbers": [1]}
+        self.assertTrue(import_modes.needs_perspective_pass(source))
+        accepted, errors = knowledge.validate({"knowledge_changes": [row]}, source)
+        self.assertEqual(errors, [])
+        self.assertEqual(accepted[0]["character"], "Mira")
+        with tempfile.TemporaryDirectory() as folder:
+            project = {"alias": "witness", "folder": folder}
+            knowledge.record(project, "scene-1", accepted)
+            self.assertIn("Mira knows: Rhea placed the blue ledger",
+                          knowledge.relevant(project, "What does Mira know about Rhea's ledger?",
+                                             lambda s: set(s.lower().split())))
+
+    def test_vague_or_negated_observation_cannot_establish_specific_action(self):
+        suggestion = {"character": "Mira", "topic": "ledger location",
+                      "fact": "Rhea placed the blue ledger under the floorboard",
+                      "certainty": "knows", "evidence_numbers": [1]}
+        for source in ("Mira watched from the doorway while Rhea moved the ledger.",
+                       "Mira watched Rhea place the blue ledger under the floorboard, "
+                       "without seeing where it landed.",
+                       "Mira watched Rhea burn the blue ledger under the floorboard."):
+            accepted, errors = knowledge.validate({"knowledge_changes": [suggestion]}, source)
+            self.assertEqual(accepted, [], source)
+            self.assertTrue(errors)
+
     def test_knowledge_validator_checks_the_predicate_not_just_shared_subject(self):
         source = ("Mara believed the north gate on the bridge was open. "
                   "Ivo believed the north gate on the bridge was closed.")
