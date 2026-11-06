@@ -1,0 +1,478 @@
+{
+  "source": "Sera watched Dain lock the silver flute inside the cedar cabinet. Dain told Oren, 'The flute burned in the kiln.' Oren believed him. Later, Oren found the flute inside the cedar cabinet.",
+  "scope": "Actual Catch Up; focused and episode passes live; base 2B mocked empty",
+  "expected": [
+    "Dain locks flute in cabinet",
+    "Sera witnesses placement",
+    "Dain tells Oren flute burned",
+    "Oren believes flute burned",
+    "Oren later discovers flute in cabinet"
+  ],
+  "calls": {
+    "focused": {
+      "seconds": 29.48,
+      "raw": {
+        "knowledge_changes": [
+          {
+            "character": "Dain",
+            "topic": "flute location",
+            "fact": "The flute is locked inside the cedar cabinet",
+            "certainty": "knows",
+            "evidence_numbers": [
+              1
+            ]
+          },
+          {
+            "character": "Oren",
+            "topic": "flute fate",
+            "fact": "The flute burned in the kiln",
+            "certainty": "believes",
+            "evidence_numbers": [
+              2
+            ]
+          },
+          {
+            "character": "Oren",
+            "topic": "flute location",
+            "fact": "The flute is inside the cedar cabinet",
+            "certainty": "knows",
+            "evidence_numbers": [
+              3
+            ]
+          }
+        ]
+      }
+    },
+    "episodes": {
+      "seconds": 64.74,
+      "raw": [
+        {
+          "kind": "action",
+          "actor": "Dain",
+          "claim": "locked the silver flute inside the cedar cabinet",
+          "topic": "",
+          "recipient": "",
+          "certainty": "",
+          "evidence_numbers": [
+            1
+          ]
+        },
+        {
+          "kind": "observation",
+          "actor": "Sera",
+          "claim": "Dain locked the silver flute inside the cedar cabinet",
+          "topic": "",
+          "recipient": "",
+          "certainty": "knows",
+          "evidence_numbers": [
+            1
+          ]
+        },
+        {
+          "kind": "assertion",
+          "actor": "Dain",
+          "claim": "The flute burned in the kiln",
+          "topic": "",
+          "recipient": "Oren",
+          "certainty": "",
+          "evidence_numbers": [
+            2
+          ]
+        },
+        {
+          "kind": "belief",
+          "actor": "Oren",
+          "claim": "The flute burned in the kiln",
+          "topic": "",
+          "recipient": "",
+          "certainty": "",
+          "evidence_numbers": [
+            2
+          ]
+        },
+        {
+          "kind": "action",
+          "actor": "Oren",
+          "claim": "found the flute inside the cedar cabinet",
+          "topic": "",
+          "recipient": "",
+          "certainty": "",
+          "evidence_numbers": [
+            3
+          ]
+        },
+        {
+          "kind": "observation",
+          "actor": "Oren",
+          "claim": "the flute inside the cedar cabinet",
+          "topic": "",
+          "recipient": "",
+          "certainty": "knows",
+          "evidence_numbers": [
+            3
+          ]
+        }
+      ]
+    }
+  },
+  "commit": "4347d41e4088f55e1a12658b2cba026e0dd4a327",
+  "import_state": "complete",
+  "source_unchanged": true,
+  "focused_validated": [
+    {
+      "character": "Oren",
+      "topic": "flute fate",
+      "fact": "The flute burned in the kiln",
+      "certainty": "believes",
+      "evidence": "Dain told Oren, 'The flute burned in the kiln.' Oren believed him.",
+      "source_order": 2
+    },
+    {
+      "character": "Oren",
+      "topic": "flute location",
+      "fact": "The flute is inside the cedar cabinet",
+      "certainty": "knows",
+      "evidence": "Later, Oren found the flute inside the cedar cabinet.",
+      "source_order": 3
+    }
+  ],
+  "focused_rejected": [
+    "perspective or content not explicit in cited evidence"
+  ],
+  "baseline_with_literal": [
+    {
+      "character": "Oren",
+      "topic": "flute fate",
+      "fact": "The flute burned in the kiln",
+      "certainty": "believes",
+      "evidence": "Dain told Oren, 'The flute burned in the kiln.' Oren believed him.",
+      "source_order": 2
+    },
+    {
+      "character": "Oren",
+      "topic": "flute location",
+      "fact": "The flute was inside the cedar cabinet",
+      "certainty": "knows",
+      "evidence": "Later, Oren found the flute inside the cedar cabinet.",
+      "source_order": 3
+    }
+  ],
+  "broad_validated": [
+    {
+      "kind": "action",
+      "actor": "Dain",
+      "recipient": "",
+      "claim": "Dain locked the silver flute inside the cedar cabinet",
+      "topic": "Dain locked the silver flute inside the cedar cabinet",
+      "certainty": "",
+      "source_order": 1,
+      "start": 0,
+      "end": 65,
+      "evidence": "Sera watched Dain lock the silver flute inside the cedar cabinet."
+    },
+    {
+      "kind": "observation",
+      "actor": "Sera",
+      "recipient": "",
+      "claim": "Dain locked the silver flute inside the cedar cabinet",
+      "topic": "Dain locked the silver flute inside the cedar cabinet",
+      "certainty": "knows",
+      "source_order": 1,
+      "start": 0,
+      "end": 65,
+      "evidence": "Sera watched Dain lock the silver flute inside the cedar cabinet."
+    },
+    {
+      "kind": "assertion",
+      "actor": "Dain",
+      "recipient": "Oren",
+      "claim": "The flute burned in the kiln",
+      "topic": "The flute burned in the kiln",
+      "certainty": "",
+      "source_order": 2,
+      "start": 66,
+      "end": 132,
+      "evidence": "Dain told Oren, 'The flute burned in the kiln.' Oren believed him."
+    },
+    {
+      "kind": "belief",
+      "actor": "Oren",
+      "recipient": "",
+      "claim": "The flute burned in the kiln",
+      "topic": "The flute burned in the kiln",
+      "certainty": "believes",
+      "source_order": 2,
+      "start": 66,
+      "end": 132,
+      "evidence": "Dain told Oren, 'The flute burned in the kiln.' Oren believed him."
+    },
+    {
+      "kind": "action",
+      "actor": "Oren",
+      "recipient": "",
+      "claim": "Oren found the flute inside the cedar cabinet",
+      "topic": "Oren found the flute inside the cedar cabinet",
+      "certainty": "",
+      "source_order": 3,
+      "start": 133,
+      "end": 186,
+      "evidence": "Later, Oren found the flute inside the cedar cabinet."
+    },
+    {
+      "kind": "observation",
+      "actor": "Oren",
+      "recipient": "",
+      "claim": "the flute inside the cedar cabinet",
+      "topic": "the flute inside the cedar cabinet",
+      "certainty": "knows",
+      "source_order": 3,
+      "start": 133,
+      "end": 186,
+      "evidence": "Later, Oren found the flute inside the cedar cabinet."
+    }
+  ],
+  "broad_rejected": [],
+  "combined_persisted": [
+    {
+      "source_id": "import:catchup:f76b671f6d14cfcbf102:section:1",
+      "kind": "action",
+      "actor": "Dain",
+      "recipient": "",
+      "claim": "Dain locked the silver flute inside the cedar cabinet",
+      "topic": "Dain locked the silver flute inside the cedar cabinet",
+      "certainty": "",
+      "source_order": 1,
+      "start": 0,
+      "end": 65,
+      "evidence": "Sera watched Dain lock the silver flute inside the cedar cabinet."
+    },
+    {
+      "source_id": "import:catchup:f76b671f6d14cfcbf102:section:1",
+      "kind": "observation",
+      "actor": "Sera",
+      "recipient": "",
+      "claim": "Dain locked the silver flute inside the cedar cabinet",
+      "topic": "Dain locked the silver flute inside the cedar cabinet",
+      "certainty": "knows",
+      "source_order": 1,
+      "start": 0,
+      "end": 65,
+      "evidence": "Sera watched Dain lock the silver flute inside the cedar cabinet."
+    },
+    {
+      "source_id": "import:catchup:f76b671f6d14cfcbf102:section:1",
+      "kind": "assertion",
+      "actor": "Dain",
+      "recipient": "Oren",
+      "claim": "The flute burned in the kiln",
+      "topic": "The flute burned in the kiln",
+      "certainty": "",
+      "source_order": 2,
+      "start": 66,
+      "end": 132,
+      "evidence": "Dain told Oren, 'The flute burned in the kiln.' Oren believed him."
+    },
+    {
+      "source_id": "import:catchup:f76b671f6d14cfcbf102:section:1",
+      "kind": "belief",
+      "actor": "Oren",
+      "recipient": "",
+      "claim": "The flute burned in the kiln",
+      "topic": "The flute burned in the kiln",
+      "certainty": "believes",
+      "source_order": 2,
+      "start": 66,
+      "end": 132,
+      "evidence": "Dain told Oren, 'The flute burned in the kiln.' Oren believed him."
+    },
+    {
+      "source_id": "import:catchup:f76b671f6d14cfcbf102:section:1",
+      "kind": "action",
+      "actor": "Oren",
+      "recipient": "",
+      "claim": "Oren found the flute inside the cedar cabinet",
+      "topic": "Oren found the flute inside the cedar cabinet",
+      "certainty": "",
+      "source_order": 3,
+      "start": 133,
+      "end": 186,
+      "evidence": "Later, Oren found the flute inside the cedar cabinet."
+    },
+    {
+      "source_id": "import:catchup:f76b671f6d14cfcbf102:section:1",
+      "kind": "observation",
+      "actor": "Oren",
+      "recipient": "",
+      "claim": "the flute inside the cedar cabinet",
+      "topic": "the flute inside the cedar cabinet",
+      "certainty": "knows",
+      "source_order": 3,
+      "start": 133,
+      "end": 186,
+      "evidence": "Later, Oren found the flute inside the cedar cabinet."
+    }
+  ],
+  "baseline_current": [
+    {
+      "character": "Oren",
+      "topic": "flute location",
+      "fact": "The flute was inside the cedar cabinet",
+      "certainty": "knows",
+      "evidence": "Later, Oren found the flute inside the cedar cabinet.",
+      "source_id": "import:catchup:f76b671f6d14cfcbf102:section:1"
+    },
+    {
+      "character": "Oren",
+      "topic": "flute fate",
+      "fact": "The flute burned in the kiln",
+      "certainty": "believes",
+      "evidence": "Dain told Oren, 'The flute burned in the kiln.' Oren believed him.",
+      "source_id": "import:catchup:f76b671f6d14cfcbf102:section:1"
+    }
+  ],
+  "ledger_current": [
+    {
+      "source_id": "import:catchup:f76b671f6d14cfcbf102:section:1",
+      "kind": "belief",
+      "actor": "Oren",
+      "recipient": "",
+      "claim": "The flute burned in the kiln",
+      "topic": "The flute burned in the kiln",
+      "certainty": "believes",
+      "source_order": 2,
+      "start": 66,
+      "end": 132,
+      "evidence": "Dain told Oren, 'The flute burned in the kiln.' Oren believed him."
+    },
+    {
+      "source_id": "import:catchup:f76b671f6d14cfcbf102:section:1",
+      "kind": "observation",
+      "actor": "Oren",
+      "recipient": "",
+      "claim": "the flute inside the cedar cabinet",
+      "topic": "the flute inside the cedar cabinet",
+      "certainty": "knows",
+      "source_order": 3,
+      "start": 133,
+      "end": 186,
+      "evidence": "Later, Oren found the flute inside the cedar cabinet."
+    }
+  ],
+  "ledger_history": [
+    {
+      "source_id": "import:catchup:f76b671f6d14cfcbf102:section:1",
+      "kind": "belief",
+      "actor": "Oren",
+      "recipient": "",
+      "claim": "The flute burned in the kiln",
+      "topic": "The flute burned in the kiln",
+      "certainty": "believes",
+      "source_order": 2,
+      "start": 66,
+      "end": 132,
+      "evidence": "Dain told Oren, 'The flute burned in the kiln.' Oren believed him."
+    },
+    {
+      "source_id": "import:catchup:f76b671f6d14cfcbf102:section:1",
+      "kind": "observation",
+      "actor": "Oren",
+      "recipient": "",
+      "claim": "the flute inside the cedar cabinet",
+      "topic": "the flute inside the cedar cabinet",
+      "certainty": "knows",
+      "source_order": 3,
+      "start": 133,
+      "end": 186,
+      "evidence": "Later, Oren found the flute inside the cedar cabinet."
+    }
+  ],
+  "markdown_exported": true,
+  "explicit_correction_probe": {
+    "source": "Oren believed the flute was destroyed. Later, Oren discovered the flute had never been destroyed.",
+    "proposals": [
+      {
+        "kind": "belief",
+        "actor": "Oren",
+        "claim": "The flute was destroyed",
+        "topic": "flute fate",
+        "certainty": "believes",
+        "evidence_numbers": [
+          1
+        ]
+      },
+      {
+        "kind": "observation",
+        "actor": "Oren",
+        "claim": "The flute had never been destroyed",
+        "topic": "flute condition",
+        "certainty": "knows",
+        "evidence_numbers": [
+          2
+        ]
+      }
+    ],
+    "rejected": [],
+    "current": [
+      {
+        "source_id": "explicit-correction",
+        "kind": "belief",
+        "actor": "Oren",
+        "recipient": "",
+        "claim": "The flute was destroyed",
+        "topic": "flute fate",
+        "certainty": "believes",
+        "source_order": 1,
+        "start": 0,
+        "end": 38,
+        "evidence": "Oren believed the flute was destroyed."
+      },
+      {
+        "source_id": "explicit-correction",
+        "kind": "observation",
+        "actor": "Oren",
+        "recipient": "",
+        "claim": "The flute had never been destroyed",
+        "topic": "flute condition",
+        "certainty": "knows",
+        "source_order": 2,
+        "start": 39,
+        "end": 97,
+        "evidence": "Later, Oren discovered the flute had never been destroyed."
+      }
+    ],
+    "expected_current": [
+      "The flute had never been destroyed"
+    ],
+    "passed": false
+  },
+  "server_metrics": {
+    "focused": {
+      "prompt_eval_tokens": 202,
+      "generated_tokens": 192
+    },
+    "episodes": {
+      "prompt_eval_tokens": 317,
+      "generated_tokens": 422
+    }
+  },
+  "evaluation": {
+    "perspective_coverage": {
+      "focused": 2,
+      "episodes": 3,
+      "total": 3
+    },
+    "extra_episode_capabilities": [
+      "narrated actions",
+      "speaker-to-listener assertions"
+    ],
+    "unsupported_accepted_claims_observed": 0,
+    "limitations": [
+      "One accepted observation is a sentence fragment; the merge keeps it instead of the complete validated perspective.",
+      "Current views retain the earlier belief and later discovery under different topics.",
+      "The initial burned/found source alone does not explicitly establish destruction or correction; a separate destroyed/never-destroyed fixture tests an unambiguous correction."
+    ],
+    "retrieval_promotion": "blocked by temporal projection and incomplete-claim defects",
+    "model_calls": 2,
+    "base_2b": "mocked empty"
+  }
+}
