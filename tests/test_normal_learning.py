@@ -1,10 +1,11 @@
 """Normal prompt learning and the persistent reply-learning switch."""
 import json
+import os
 import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import memory_worker as mem
 import import_modes
@@ -13,6 +14,33 @@ import storyteller_ui
 
 
 class NormalLearningTests(unittest.TestCase):
+    def test_panel_starts_and_owns_optional_local_model_only_when_enabled(self):
+        with tempfile.TemporaryDirectory() as folder:
+            config_path = Path(folder) / "projects.json"
+            model_path = Path(folder) / "local-9b.gguf"
+            model_path.write_bytes(b"test fixture")
+            with patch.object(storyteller, "CONFIG", config_path):
+                storyteller_ui.set_perspective_analysis(True, str(model_path))
+                self.assertTrue(storyteller.load_config()["perspective_analysis"])
+                worker = mem.Worker([])
+                process = MagicMock()
+                process.poll.return_value = None
+                with patch.dict("os.environ", {"STORYTELLER_PERSPECTIVE_MODEL_FILE":
+                                              str(model_path)}, clear=True), \
+                     patch.object(mem, "HOME", Path(folder)), \
+                     patch.object(mem, "is_endpoint_healthy", side_effect=[False, True]), \
+                     patch.object(mem.subprocess, "Popen", return_value=process) as spawn, \
+                     patch.object(mem.time, "sleep"):
+                    worker.start_perspective_model()
+                    self.assertEqual(os.environ["STORYTELLER_PERSPECTIVE_ENDPOINT"],
+                                     "http://127.0.0.1:18986/v1/chat/completions")
+                    self.assertIn(str(model_path), spawn.call_args.args[0])
+                    worker.stop_perspective_model()
+                    process.terminate.assert_called_once()
+                    self.assertNotIn("STORYTELLER_PERSPECTIVE_ENDPOINT", os.environ)
+                storyteller_ui.set_perspective_analysis(False)
+                self.assertFalse(storyteller.load_config()["perspective_analysis"])
+
     def test_normal_dialogue_uses_optional_model_and_next_request_snapshot(self):
         with tempfile.TemporaryDirectory() as folder:
             project = {"alias": "fiction", "folder": folder}

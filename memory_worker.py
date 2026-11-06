@@ -241,6 +241,14 @@ def is_healthy():
     except (URLError, OSError, ValueError):
         return False
 
+
+def is_endpoint_healthy(url):
+    try:
+        with urlopen(url, timeout=1) as response:
+            return response.status == 200
+    except (URLError, OSError, ValueError):
+        return False
+
 def request_json(numbered_scene, *, author_message=False):
     payload = {
         "model": MODEL_NAME,
@@ -605,6 +613,61 @@ class Worker:
         self.thread = None
         self.server = None
         self.server_log = None
+        self.perspective_server = None
+        self.perspective_log = None
+        self.owns_perspective_endpoint = False
+
+    def start_perspective_model(self):
+        """Start an explicitly configured local 9B pass owned by this session."""
+        if os.environ.get("STORYTELLER_PERSPECTIVE_ENDPOINT"):
+            return
+        configured = os.environ.get("STORYTELLER_PERSPECTIVE_MODEL_FILE", "").strip()
+        if not configured:
+            return
+        model = Path(configured).expanduser()
+        if not model.is_file() or model.suffix.lower() != ".gguf":
+            log("Optional perspective model file unavailable; using 2B only.")
+            return
+        endpoint = "http://127.0.0.1:18986/v1/chat/completions"
+        if is_endpoint_healthy("http://127.0.0.1:18986/health"):
+            log("Optional perspective port occupied; leaving existing server alone.")
+            return
+        self.perspective_log = open(HOME / "perspective-model.log", "a", encoding="utf-8")
+        cmd = ["nice", "-n", "10", "/usr/bin/llama-server", "-m", str(model),
+               "--host", "127.0.0.1", "--port", "18986", "--ctx-size", "8192",
+               "--n-gpu-layers", "0", "--threads", "6", "--threads-batch", "6", "--no-webui"]
+        try:
+            self.perspective_server = subprocess.Popen(
+                cmd, stdout=self.perspective_log, stderr=subprocess.STDOUT)
+            for _ in range(150):
+                if is_endpoint_healthy("http://127.0.0.1:18986/health"):
+                    os.environ["STORYTELLER_PERSPECTIVE_ENDPOINT"] = endpoint
+                    self.owns_perspective_endpoint = True
+                    log("Optional local perspective model ready.")
+                    return
+                if self.perspective_server.poll() is not None:
+                    break
+                time.sleep(.2)
+        except OSError as exc:
+            log(f"Optional perspective model failed to start: {exc}")
+        log("Optional perspective model unavailable; using 2B only.")
+        self.stop_perspective_model()
+
+    def stop_perspective_model(self):
+        if self.perspective_server is not None:
+            if self.perspective_server.poll() is None:
+                self.perspective_server.terminate()
+                try: self.perspective_server.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self.perspective_server.kill()
+                    self.perspective_server.wait(timeout=3)
+            self.perspective_server = None
+        if self.perspective_log:
+            self.perspective_log.close()
+            self.perspective_log = None
+        if self.owns_perspective_endpoint:
+            os.environ.pop("STORYTELLER_PERSPECTIVE_ENDPOINT", None)
+            self.owns_perspective_endpoint = False
 
     def start(self):
         if not MODEL_FILE.is_file():
@@ -624,6 +687,7 @@ class Worker:
         for i in range(150):
             if is_healthy():
                 log("CPU model ready. Automatic memory analysis enabled.")
+                self.start_perspective_model()
                 self.thread = threading.Thread(target=self.run, name="storyteller-memory", daemon=True)
                 self.thread.start()
                 return True
@@ -750,6 +814,7 @@ class Worker:
 
     def stop(self):
         self.stop_event.set()
+        self.stop_perspective_model()
         if self.server and self.server.poll() is None:
             self.server.terminate()
             try: self.server.wait(timeout=5)

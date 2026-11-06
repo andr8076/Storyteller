@@ -107,6 +107,7 @@ at login.
 | T | Show the current story continuation point |
 | P | Edit, preview and toggle optional per-project prompt prefix/suffix |
 | M | Toggle learning from generated writer responses for this project |
+| K | Toggle optional local perspective analysis; choose a local 9B GGUF on first enable |
 | Enter | Show project information and analysis/review counts |
 | S | Start or stop the gateway and CPU memory model |
 | L | View recent activity |
@@ -115,6 +116,8 @@ at login.
 | Q | Quit and stop Storyteller (if this panel started it) |
 
 The project list updates immediately; no model restart is needed to change it.
+The K setting takes effect after stopping and starting Storyteller with S. The
+additional CPU model is owned by that Storyteller session and stops with it.
 The project model alias remains unchanged during edits to preserve its identity in Jan.
 Changing a folder only changes the association: it does **not** move existing files.
 

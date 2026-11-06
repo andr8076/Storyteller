@@ -96,6 +96,18 @@ def toggle_response_learning(alias):
     return project["learn_from_responses"]
 
 
+def set_perspective_analysis(enabled, model_file=None):
+    """Persist a local model choice without starting a service at login."""
+    config = storyteller.load_config()
+    if enabled:
+        chosen = Path(model_file or config.get("perspective_model_file", "")).expanduser()
+        if not chosen.is_file() or chosen.suffix.lower() != ".gguf":
+            raise ValueError("Choose an existing local GGUF model file.")
+        config["perspective_model_file"] = str(chosen.resolve())
+    config["perspective_analysis"] = bool(enabled)
+    storyteller.save_config(config)
+
+
 def port_available(host, port, timeout=.12):
     try:
         with socket.create_connection((host, port), timeout=timeout):
@@ -185,9 +197,16 @@ class Supervisor:
                        "serve", "--port", str(self.port)]
             if self.no_analysis:
                 command.append("--no-analysis")
+            environment = os.environ.copy()
+            config = storyteller.load_config()
+            if config.get("perspective_analysis"):
+                environment["STORYTELLER_PERSPECTIVE_MODEL_FILE"] = config.get(
+                    "perspective_model_file", "")
+            else:
+                environment.pop("STORYTELLER_PERSPECTIVE_MODEL_FILE", None)
             self.process = subprocess.Popen(
                 command, cwd=str(HOME), stdout=self.log_stream,
-                stderr=subprocess.STDOUT)
+                stderr=subprocess.STDOUT, env=environment)
             self.last_message = "Starting the gateway and memory AI..." if not self.no_analysis else "Starting gateway..."
             return True
         except OSError as exc:
@@ -297,7 +316,9 @@ class Panel(ImportUI, AffixUI):
                  self.color(2 if status["cpu"] else 3))
         self.put(3, 55, "Jan API: " + ("ONLINE" if status["jan"] else "OFFLINE"),
                  self.color(2 if status["jan"] else 3))
-        self.put(4, 3, f"Projects: {len(projects)}  |  Local port: {self.supervisor.port}  |  Writing model chosen per project")
+        self.put(4, 3, f"Projects: {len(projects)}  |  Port: {self.supervisor.port}  |  "
+                 "Perspective: " +
+                 ("ON" if storyteller.load_config().get("perspective_analysis") else "OFF") + " (K)")
         self.line(5)
         self.put(6, 3, "PROJECTS", self.color(1) | curses.A_BOLD)
         project_rows = max(2, min(8, h-20))
@@ -608,6 +629,7 @@ class Panel(ImportUI, AffixUI):
             "QUICK HELP",
             "P / Prefix/Suffix: edit and toggle optional prompt text.\n"
             "M / Reply Learning: toggle analysis of generated scenes per project.\n"
+            "K / Perspective Analysis: optional local 9B model on next start.\n"
             "A / Add: register a story folder and choose its writing model.\n"
             "E / Edit: change name, folder or writing model.\n"
             "D / Remove: detach the project; NO files are deleted.\n"
@@ -667,6 +689,21 @@ class Panel(ImportUI, AffixUI):
                 enabled = toggle_response_learning(projects[self.selected]["alias"])
                 self.notice("Learning from writer replies is " + ("ON" if enabled else "OFF") +
                             ". Author messages are still analyzed.")
+            elif key in (ord("k"), ord("K")):
+                config = storyteller.load_config()
+                enable = not config.get("perspective_analysis", False)
+                model_file = config.get("perspective_model_file", "")
+                if enable and not Path(model_file).is_file():
+                    model_file = self.prompt("Perspective model", "Full path to local 9B GGUF:", "")
+                    if model_file is None:
+                        continue
+                try:
+                    set_perspective_analysis(enable, model_file)
+                except ValueError as exc:
+                    self.notice(str(exc))
+                    continue
+                self.notice("Perspective analysis " + ("ON" if enable else "OFF") +
+                            ". Use S to stop/start Storyteller for this to take effect.")
             elif projects and key in (ord("c"), ord("C")):
                 self.arm_next_prompt(projects[self.selected], "catchup")
             elif projects and key in (ord("i"), ord("I")):
