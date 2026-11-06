@@ -559,11 +559,8 @@ def serve(args):
         print(f"  {project['alias']} -> {project['folder']}", flush=True)
     print("Only runs while this terminal is open. Press Ctrl+C to stop.", flush=True)
     worker = Worker(lambda: list(load_config()["projects"])) if not args.no_analysis else None
-    if worker:
-        worker.start()
     from prompt_import_worker import PromptImportWorker
     imports_worker = PromptImportWorker(lambda: list(load_config()["projects"]))
-    imports_worker.start()
 
     def stop_on_signal(_signum, _frame):
         raise KeyboardInterrupt
@@ -571,6 +568,11 @@ def serve(args):
     signal.signal(signal.SIGTERM, stop_on_signal)
     signal.signal(signal.SIGHUP, stop_on_signal)
     try:
+        # Startup waits for local model readiness. A stop signal during that
+        # wait must still close the models this session has already spawned.
+        if worker:
+            worker.start()
+        imports_worker.start()
         server.serve_forever()
     except KeyboardInterrupt:
         pass

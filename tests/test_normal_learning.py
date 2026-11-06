@@ -4,6 +4,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -11,9 +12,25 @@ import memory_worker as mem
 import import_modes
 import storyteller
 import storyteller_ui
+import prompt_import_worker
 
 
 class NormalLearningTests(unittest.TestCase):
+    def test_gateway_cleans_models_when_stopped_during_startup(self):
+        worker = MagicMock()
+        worker.start.side_effect = KeyboardInterrupt
+        with patch.object(storyteller, "load_config", return_value={"projects": []}), \
+             patch.object(storyteller, "ThreadingHTTPServer") as http_server, \
+             patch.object(storyteller, "Worker", return_value=worker), \
+             patch.object(prompt_import_worker, "PromptImportWorker") as imports, \
+             patch.object(storyteller.signal, "signal"):
+            args = SimpleNamespace(upstream="http://127.0.0.1:1337", port=18880,
+                                   no_analysis=False)
+            storyteller.serve(args)
+        worker.stop.assert_called_once()
+        imports.return_value.stop.assert_called_once()
+        http_server.return_value.server_close.assert_called_once()
+
     def test_panel_starts_and_owns_optional_local_model_only_when_enabled(self):
         with tempfile.TemporaryDirectory() as folder:
             config_path = Path(folder) / "projects.json"
