@@ -24,12 +24,52 @@ STATE_VERBS = {
     "denies": r"denies?|denied",
     "forgotten": r"forgot|forgotten",
 }
+PROPOSITION_FILLER = {"the", "a", "an", "is", "was", "are", "were", "has", "had",
+                      "that", "this", "it", "its", "in", "on", "at", "of", "to",
+                      "from", "with", "by", "and", "but", "as", "there"}
 
 
-def _named_cue(character, certainty, sentence):
+def _content_supported(fact, source):
+    """Require every stated detail, not merely a majority of shared words."""
+    source_words = set(re.findall(r"[a-z0-9]+", source.casefold()))
+    claim_words = [word for word in re.findall(r"[a-z0-9]+", fact.casefold())
+                   if word not in PROPOSITION_FILLER]
+    def covered(word):
+        if word in source_words:
+            return True
+        stem = word[:-3] if word.endswith("ing") else (
+            word[:-2] if word.endswith("ed") else word[:-1] if word.endswith("s") else word)
+        return len(stem) >= 4 and any(other.startswith(stem) for other in source_words)
+    return bool(claim_words) and all(covered(word) for word in claim_words)
+
+
+def _grounded_claim(character, certainty, fact, sentence):
+    """Tie a proposed belief to the character's clause or one clear quotation."""
     name = r"(?<!\w)" + re.escape(character) + r"(?!\w)"
-    return bool(re.search(
-        rf"{name}(?:\s+\w+){{0,3}}\s+(?:{STATE_VERBS[certainty]})\b", sentence, re.I))
+    cue = re.search(rf"{name}(?:\s+\w+){{0,3}}\s+(?:{STATE_VERBS[certainty]})\b",
+                    sentence, re.I)
+    if not cue:
+        return False
+    following = re.split(r"\b(?:but\s+in\s+fact|in\s+fact|but\s+actually|actually|but)\b|;",
+                         sentence[cue.end():], maxsplit=1, flags=re.I)[0]
+    if _content_supported(fact, following):
+        return bool(re.search(r"\b(?:not|never|no)\b", fact, re.I)) == bool(
+            re.search(r"\b(?:not|never|no)\b", following, re.I))
+    # "She told Joss, 'The map burned.' Joss believed her." The named
+    # mental clause is anaphoric, but a single quoted statement to that
+    # listener can still ground the belief. Competing quotes stay ambiguous.
+    if certainty not in {"believes", "believes_wrongly"} or not re.match(
+            r"\s+(?:her|him|them|it)\b", following, re.I):
+        return False
+    preceding = sentence[:cue.start()]
+    addressed = re.search(rf"\btold\s+{name}\b|\bsaid\s+to\s+{name}\b", preceding, re.I)
+    unnamed_listener = (re.search(r"\btold\s+(?:him|her|them)\b", preceding, re.I)
+                        and not (set(re.findall(r"\b[A-Z][a-z]+\b", preceding)) -
+                                 {"She", "He", "They", "The", "A", "An"}))
+    if not (addressed or unnamed_listener):
+        return False
+    quotations = re.findall(r"['\"“]([^'\"”]{7,260})['\"”]", preceding)
+    return len(quotations) == 1 and _content_supported(fact, quotations[0])
 
 
 def _adjacent_pronoun_clause(character, certainty, previous, sentence):
@@ -82,9 +122,7 @@ def validate(response, text, *, limit=12):
             continue
         cited = [sentences[i - 1] for i in refs]
         evidence = " ".join(cited)
-        grounded = any(_named_cue(character, certainty, sentence) and
-                       mem.evidence_supports_claim(character, fact, sentence,
-                                                   observer_guard=False)
+        grounded = any(_grounded_claim(character, certainty, fact, sentence)
                        for sentence in cited)
         if not grounded and len(refs) == 1 and refs[0] > 1:
             prior = sentences[refs[0] - 2]

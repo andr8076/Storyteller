@@ -15,6 +15,42 @@ import import_modes
 
 
 class PerspectiveExperiment(unittest.TestCase):
+    def test_knowledge_validator_checks_the_predicate_not_just_shared_subject(self):
+        source = ("Mara believed the north gate on the bridge was open. "
+                  "Ivo believed the north gate on the bridge was closed.")
+        row = {"character": "Ivo", "topic": "north gate state", "certainty": "believes",
+               "evidence_numbers": [2]}
+        wrong, errors = knowledge.validate({"knowledge_changes": [
+            {**row, "fact": "The north gate on the bridge was open"}]}, source)
+        self.assertEqual(wrong, [])
+        self.assertTrue(errors)
+        right, errors = knowledge.validate({"knowledge_changes": [
+            {**row, "fact": "The north gate on the bridge was closed"}]}, source)
+        self.assertEqual(errors, [])
+        self.assertEqual(right[0]["fact"], "The north gate on the bridge was closed")
+
+    def test_knowledge_validator_preserves_explicit_negation(self):
+        source = "Ivo believed the gate was not open."
+        row = {"character": "Ivo", "topic": "gate state", "certainty": "believes",
+               "evidence_numbers": [1]}
+        wrong, _ = knowledge.validate({"knowledge_changes": [
+            {**row, "fact": "The gate was open"}]}, source)
+        self.assertEqual(wrong, [])
+        correct, errors = knowledge.validate({"knowledge_changes": [
+            {**row, "fact": "The gate was not open"}]}, source)
+        self.assertEqual(errors, [])
+        self.assertEqual(len(correct), 1)
+
+    def test_competing_quoted_statements_do_not_ground_anaphoric_belief(self):
+        source = ("She told Joss, 'The gate was open,' then, 'The gate was closed.' "
+                  "Joss believed her.")
+        response = {"knowledge_changes": [{"character": "Joss", "topic": "gate state",
+                    "fact": "The gate was open", "certainty": "believes",
+                    "evidence_numbers": [1]}]}
+        accepted, rejected = knowledge.validate(response, source)
+        self.assertEqual(accepted, [])
+        self.assertTrue(rejected)
+
     def test_pronoun_cannot_be_recorded_as_a_character(self):
         source = "He realized Rhea had lied. She saw the map behind the furnace."
         self.assertEqual(knowledge.explicit_perspectives(source), [])
