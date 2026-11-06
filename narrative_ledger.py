@@ -223,8 +223,12 @@ def validate(proposals, text):
                 rejected.append("assertion lacks named speaker, listener, or matching quote")
                 continue
         else:
+            # A quoted proposition is an assertion, regardless of whether
+            # the model labels it as narrator-established state.
+            narration = " ".join(re.sub(r"['\"“][^'\"”]*['\"”]", "", s)
+                                 for s in cited)
             if (not any(re.search(rf"(?<!\w){re.escape(actor)}\b", s, re.I) for s in cited)
-                    or not character_knowledge._content_supported(claim, evidence)
+                    or not character_knowledge._content_supported(claim, narration)
                     or (kind == "action" and not _explicit_action(actor, claim, cited))
                     or (kind == "action" and re.search(r"\b(?:said|told|believed|suspected)\b",
                                                        claim, re.I))):

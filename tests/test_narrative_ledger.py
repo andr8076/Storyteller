@@ -100,12 +100,14 @@ class NarrativeLedgerExperiment(unittest.TestCase):
              "claim": "The map burned in the fire", "evidence_numbers": [1]},
             {"kind": "action", "actor": "Rhea", "claim": "Rhea burned the map in the fire",
              "evidence_numbers": [1]},
+            {"kind": "state", "actor": "map", "claim": "The map burned in the fire",
+             "evidence_numbers": [1]},
             {"kind": "belief", "actor": "Joss", "topic": "map state", "certainty": "believes",
              "claim": "The map was in the drawer", "evidence_numbers": [2]},
         ]
         accepted, rejected = ledger.validate(proposals, source)
         self.assertEqual([row["kind"] for row in accepted], ["assertion"])
-        self.assertEqual(len(rejected), 2)
+        self.assertEqual(len(rejected), 3)
 
     def test_linked_belief_refuses_competing_statements(self):
         source = ("Rhea told Joss, 'The map burned.' "
@@ -121,6 +123,18 @@ class NarrativeLedgerExperiment(unittest.TestCase):
         accepted, rejected = ledger.validate(proposals, source)
         self.assertEqual([row["kind"] for row in accepted], ["assertion", "assertion"])
         self.assertTrue(rejected)
+
+    def test_narrator_state_is_accepted_separately_from_quoted_claim(self):
+        source = "The map was intact. Rhea told Joss, 'The map burned.'"
+        proposals = [
+            {"kind": "state", "actor": "map", "claim": "The map was intact",
+             "evidence_numbers": [1]},
+            {"kind": "state", "actor": "map", "claim": "The map burned",
+             "evidence_numbers": [2]},
+        ]
+        accepted, rejected = ledger.validate(proposals, source)
+        self.assertEqual([r["claim"] for r in accepted], ["The map was intact"])
+        self.assertEqual(len(rejected), 1)
 
 
 if __name__ == "__main__":
