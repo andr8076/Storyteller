@@ -15,6 +15,50 @@ import import_modes
 
 
 class PerspectiveExperiment(unittest.TestCase):
+    def test_live_style_dialogue_merges_model_and_literal_history(self):
+        scene = ("Lena told Dorian, 'The brass key is in the attic.' "
+                 "Dorian believed the brass key was in the attic. "
+                 "Later, Dorian discovered the brass key was in the cellar.")
+        raw = {"knowledge_changes": [
+            {"character": "Dorian", "topic": "location of the brass key",
+             "fact": "The brass key is in the attic.", "certainty": "believes",
+             "evidence_numbers": [1]},
+            {"character": "Dorian", "topic": "location of the brass key",
+             "fact": "The brass key is in the cellar.", "certainty": "knows",
+             "evidence_numbers": [2]}]}
+        model, errors = knowledge.validate(raw, scene)
+        self.assertEqual(errors, [])
+        literal = knowledge.explicit_perspectives(scene)
+        self.assertEqual([row["topic"] for row in literal], ["key location", "key location"])
+        merged = knowledge.combine(model, literal)
+        self.assertEqual([(row["certainty"], row["fact"]) for row in merged],
+                         [("believes", "The brass key was in the attic"),
+                          ("knows", "The brass key was in the cellar")])
+        with tempfile.TemporaryDirectory() as folder:
+            project = {"alias": "dialogue", "folder": folder}
+            self.assertEqual(knowledge.record(project, "scene-1", merged), 2)
+            self.assertEqual(len(knowledge.current(project)), 1)
+            self.assertEqual(knowledge.current(project)[0]["certainty"], "knows")
+            history = knowledge.relevant(project, "What did Dorian believe about the brass key before?",
+                                          lambda s: set(s.lower().split()))
+            self.assertIn("Earlier, Dorian believes: The brass key was in the attic", history)
+
+    def test_topic_reconciliation_keeps_distinct_objects_separate(self):
+        with tempfile.TemporaryDirectory() as folder:
+            project = {"alias": "keys", "folder": folder}
+            common = {"character": "Dorian", "certainty": "knows", "evidence": "source"}
+            rows = [
+                {**common, "topic": "brass key location", "fact": "The brass key was in the cellar"},
+                {**common, "topic": "silver key location", "fact": "The silver key was in the loft"},
+                {**common, "topic": "location of the brass key", "fact": "The brass key was in the chest"},
+            ]
+            for i, row in enumerate(rows):
+                knowledge.record(project, f"scene-{i}", [row])
+            current = knowledge.current(project)
+            self.assertEqual(len(current), 2)
+            self.assertEqual({row["fact"] for row in current},
+                             {"The brass key was in the chest", "The silver key was in the loft"})
+
     def test_scene_actions_cannot_become_timeless_identity(self):
         scene = ("Demi was being tracked by the Director. "
                  "Amos removed the power cell from his pulse rifle. "

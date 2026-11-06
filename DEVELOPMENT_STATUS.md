@@ -14,7 +14,8 @@ Improve source-backed long-term narrative memory, especially character beliefs a
 - Two unrelated dialogue scenes: Qwen3.5-2B returned no attributed knowledge (10–14 seconds). A dedicated local Qwen3.5-9B pass recovered earlier false beliefs and later true locations, about 19–20 seconds extra per scene. The validator rejected an unsupported inference. A deterministic named-observation fallback recovered a later direct observation.
 - Actual Jan/Cydonia gateway returned HTTP 200 in about 36 seconds. It injected prior memory, excluded the new fact in that request, and made the fact retrievable after the worker ran. The persistent OFF setting skipped learning the generated answer while still learning the user message.
 - A 1,389-character excerpt copied from the original Sparkdrive story into a disposable Catch Up project completed in 55.33 seconds with 8 accepted facts and 14 review items, advancing continuation. The original file hash and modification time were unchanged. Earlier larger single responses had been truncated. Three accepted action-as-identity false positives are now blocked by a targeted deterministic test; the excerpt has not been rerun with this final filter.
-- `python -m unittest discover -s tests -q`: 51 passed after extending the optional pass to Normal Texting. The Normal Texting path and timeout fallback have deterministic integration tests, but have not been rerun against the live 9B server. No full manuscript import or personal project changes.
+- A live local 9B call through the new Normal Texting extraction path took 19.55 seconds and recovered an earlier belief and later discovery. It also exposed duplicate states because the literal fallback and model used different topic names and verb tense. Topic normalization, equivalent-claim deduplication, and cautious subject-matched topic reconciliation address this; the fix still needs a live rerun.
+- `python -m unittest discover -s tests -q`: 53 passed after the topic/duplicate fix. No full manuscript import or personal project changes.
 
 ## Architecture decision and limitations
 - The append-only knowledge ledger adapts the temporal and provenance idea seen in Narra without adopting its entire database and embedding stack. Other frameworks may still offer advantages.
@@ -22,4 +23,4 @@ Improve source-backed long-term narrative memory, especially character beliefs a
 - Extraction can miss indirect or pronoun-heavy information. Retrieval is largely lexical. The full Sparkdrive manuscript and long-running Jan project behavior remain untested.
 
 ## Next action
-Measure how often the optional 9B pass improves the actual Normal Texting worker on a small varied dialogue set, including generated scenes, then decide whether its latency warrants enabling it by default.
+Rerun the live 9B Normal Texting scene to check the duplicate fix, then compare additional dialogue styles and decide whether its latency warrants enabling it by default.

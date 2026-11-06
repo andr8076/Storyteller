@@ -157,6 +157,13 @@ def explicit_perspectives(text):
         if not subject:
             continue
         anchor = (subject.group(1) or subject.group(2)).lower()
+        # In "the brass key was in the attic", the key is the subject;
+        # "brass" alone creates a second topic beside "key location".
+        noun_phrase = re.match(
+            r"(?:the|a|an)\s+([a-z][\w-]*(?:\s+[a-z][\w-]*){0,3})\s+"
+            r"(?:is|was|are|were|has|had)\b", proposition, re.I)
+        if noun_phrase:
+            anchor = noun_phrase.group(1).split()[-1].lower()
         kind = ("source" if re.search(r"\b(?:came\s+from|originated\s+from)\b", proposition, re.I) else
                 "location" if re.search(r"\b(beneath|under|inside|behind|located|hidden|in|at)\b",
                                         proposition, re.I) else "state")
@@ -176,10 +183,20 @@ def combine(model_entries, explicit_entries):
     for row in model_entries:
         key = (row["character"].casefold(), row["topic"].casefold(),
                row["source_order"])
-        if key not in explicit_keys:
+        if key not in explicit_keys and not any(
+                row["character"].casefold() == other["character"].casefold()
+                and row["source_order"] == other["source_order"]
+                and row["certainty"] == other["certainty"]
+                and _claim_words(row["fact"]) == _claim_words(other["fact"])
+                for other in selected):
             selected.append(row)
     selected.sort(key=lambda item: item.get("source_order", 0))
     return selected
+
+
+def _claim_words(fact):
+    return tuple("be" if word in {"is", "was", "are", "were"} else word
+                 for word in re.findall(r"[a-z0-9]+", fact.casefold()))
 
 
 @contextmanager
@@ -255,11 +272,21 @@ def reconcile_topic(db, item):
         existing = words(topic)
         if incoming and incoming == existing:
             matches.append(topic)
+        elif ("location" in incoming and "location" in existing
+              and _subject_head(item["fact"]) == _subject_head(fact)
+              and _subject_head(fact)):
+            matches.append(topic)
         elif (incoming & existing and
               re.sub(r"\W+", " ", fact.casefold()).strip() ==
               re.sub(r"\W+", " ", item["fact"].casefold()).strip()):
             matches.append(topic)
     return matches[0] if len(matches) == 1 else item["topic"]
+
+
+def _subject_head(fact):
+    match = re.match(r"(?:the|a|an)\s+([a-z][\w-]*(?:\s+[a-z][\w-]*){0,3})\s+"
+                     r"(?:is|was|are|were|has|had)\b", fact, re.I)
+    return match.group(1).casefold() if match else ""
 
 
 def export_markdown(project):
