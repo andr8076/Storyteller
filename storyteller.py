@@ -204,14 +204,15 @@ def select_memory(project, messages):
             parts.append("### CURRENT STORY POSITION (project-specific)\n" + snippet)
             selected.append("project-state/" + project["alias"] + "/story-state.md")
             remaining -= len(snippet)
+    latest_user = next((text_from_content(m.get("content")) for m in reversed(messages)
+                        if isinstance(m, dict) and m.get("role") == "user"), "")
     perspective = character_knowledge.relevant(project, " ".join(latest), terms,
-                                                limit=min(remaining, 1700))
+                                                limit=min(remaining, 1700),
+                                                temporal_query=latest_user)
     if perspective:
         parts.append("### CHARACTER PERSPECTIVES (attributed; beliefs are not world facts)\n" + perspective)
         selected.append("memory/character-knowledge.sqlite3")
         remaining -= len(perspective)
-    latest_user = next((text_from_content(m.get("content")) for m in reversed(messages)
-                        if isinstance(m, dict) and m.get("role") == "user"), "")
     try:
         historical = event_history.relevant(project, latest_user, terms,
                                             limit=min(remaining, 1600))

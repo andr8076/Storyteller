@@ -274,9 +274,12 @@ def current(project):
                     ORDER BY sequence DESC""")]
 
 
-def relevant(project, query, terms, limit=1400):
+def relevant(project, query, terms, limit=1400, *, temporal_query=None):
     """Attributed perspective snippets for an outgoing writing request."""
     query_terms = terms(query)
+    temporal = bool(re.search(r"\b(?:before|earlier|previously|initially|formerly|"
+                              r"used to|at the time|what did .* believe|what did .* know)\b",
+                              temporal_query if temporal_query is not None else query, re.I))
     ranked = []
     for row in current(project):
         score = len(query_terms & terms(row["character"])) * 3
@@ -290,5 +293,32 @@ def relevant(project, query, terms, limit=1400):
                 f"[source: {row['source_id']}; evidence: {row['evidence']}]")
         if len("\n".join(lines + [line])) > limit:
             continue
-        lines.append(line)
+        earlier = []
+        if temporal:
+            for past in _earlier_states(project, row):
+                history = (f"- Earlier, {row['character']} {past['certainty'].replace('_', ' ')}: "
+                           f"{past['fact']} [source: {past['source_id']}; "
+                           f"evidence: {past['evidence']}]")
+                if len("\n".join(lines + earlier + [history, line])) <= limit:
+                    earlier.append(history)
+        lines.extend(earlier + [line])
     return "\n".join(lines)
+
+
+def _earlier_states(project, current_row):
+    path = Path(project["folder"]) / ".storyteller" / "memory" / "character-knowledge.sqlite3"
+    if not path.is_file() or path.is_symlink():
+        return []
+    with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as db:
+        columns = {row[1] for row in db.execute("PRAGMA table_info(knowledge)")}
+        timeline = "AND scope='timeline'" if "scope" in columns else ""
+        rows = db.execute(f"""SELECT fact,certainty,evidence,source_id FROM knowledge
+            WHERE lower(character)=lower(?) AND lower(topic)=lower(?) {timeline}
+            ORDER BY sequence DESC LIMIT 4""",
+            (current_row["character"], current_row["topic"])).fetchall()
+    history = [dict(zip(("fact", "certainty", "evidence", "source_id"), values))
+               for values in reversed(rows)]
+    return [row for row in history if not (
+        row["source_id"] == current_row["source_id"] and
+        row["fact"] == current_row["fact"] and
+        row["certainty"] == current_row["certainty"])][-3:]

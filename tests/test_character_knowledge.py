@@ -40,6 +40,25 @@ class PerspectiveExperiment(unittest.TestCase):
             with knowledge.database(project) as db:
                 self.assertEqual(db.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0], 2)
 
+    def test_historical_question_recovers_earlier_belief_with_source(self):
+        with tempfile.TemporaryDirectory() as folder:
+            project = {"alias": "fiction", "folder": folder}
+            knowledge.record(project, "scene-before", [{"character": "Ivo",
+                "topic": "vault location", "fact": "The vault was beneath the lake",
+                "certainty": "suspects", "evidence": "Ivo suspected the vault was beneath the lake."}])
+            knowledge.record(project, "scene-after", [{"character": "Ivo",
+                "topic": "vault location", "fact": "The vault was beneath the lake",
+                "certainty": "knows", "evidence": "Ivo discovered the vault was beneath the lake."}])
+            old_query = [{"role": "user", "content": "What did Ivo believe before he found the vault?"}]
+            historical, _ = storyteller.select_memory(project, old_query)
+            self.assertIn("Earlier, Ivo suspects: The vault was beneath the lake", historical)
+            self.assertIn("scene-before", historical)
+            self.assertIn("Ivo knows: The vault was beneath the lake", historical)
+            ordinary, _ = storyteller.select_memory(
+                project, [{"role": "user", "content": "Continue with Ivo at the vault."}])
+            self.assertNotIn("Earlier, Ivo suspects", ordinary)
+            self.assertIn("Ivo knows:", ordinary)
+
     def test_unsupported_perspective_and_other_project_are_excluded(self):
         with tempfile.TemporaryDirectory() as folder, tempfile.TemporaryDirectory() as other:
             project = {"alias": "first", "folder": folder}

@@ -24,6 +24,9 @@ Older established events remain searchable after they leave the short recent
 events summary. A local, rebuildable SQLite search index over the project's
 append-only event log selects a few matching past events with source evidence;
 it does not change the original event log or the current continuation point.
+Historical questions about a character's earlier belief can also retrieve
+prior source-backed states from the character ledger. Ordinary writing requests
+continue to receive only the character's latest state.
 
 A pre-existing chapter pasted as a **user message** in an ordinary Jan chat
 is not automatically imported as canon. Use **Catch Up (C)** for existing
