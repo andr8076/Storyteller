@@ -6,6 +6,7 @@ an isolated project without migrating or rewriting existing user memory.
 """
 import hashlib
 import json
+import os
 import re
 import sqlite3
 from contextlib import contextmanager
@@ -31,6 +32,9 @@ are narrator-established, not merely said or imagined. Keep claims explicit,
 self-contained, and close to the exact source wording. Cite the sentence with
 the speaker or observer and the actual content. Do not infer knowledge from
 presence or from another character knowing something. Return valid JSON only.
+For each narrated action, also include a separate observation if a named
+character watched or saw it: the observer is actor, the claim names the
+witnessed action, and certainty is knows. Do not skip explicit witnesses.
 /no_think"""
 
 
@@ -83,6 +87,65 @@ def _explicit_action(actor, claim, cited):
     return False
 
 
+def _complete_action(actor, claim, cited):
+    """Complete a verb phrase only if the original source has that exact actor."""
+    if re.match(rf"(?<!\w){re.escape(actor)}\b", claim, re.I):
+        return claim
+    first = re.match(r"([a-z]+)\b", claim, re.I)
+    if not first:
+        return claim
+    for sentence in cited:
+        action = re.search(rf"(?<!\w){re.escape(actor)}\s+([a-z]+)\b([^.!?;]*)",
+                           sentence, re.I)
+        if action and character_knowledge._content_supported(first.group(1), action.group(1)) and \
+                character_knowledge._content_supported(claim, action.group(0)):
+            return actor + " " + claim
+    return claim
+
+
+def _linked_belief(actor, claim, refs, sentences, accepted):
+    """A listener believed one uniquely identified, immediately prior claim."""
+    matches = []
+    possible = [row for row in accepted if row["kind"] == "assertion" and
+                row["recipient"].casefold() == actor.casefold() and
+                row["source_order"] in refs]
+    if len(possible) != 1 or len(re.findall(
+            r"['\"“]([^'\"”]{5,260})['\"”]", possible[0]["evidence"])) != 1:
+        return None
+    for prior in accepted:
+        if prior["kind"] != "assertion" or prior["recipient"].casefold() != actor.casefold():
+            continue
+        if prior["source_order"] not in refs:
+            continue
+        if character_knowledge._claim_words(prior["claim"]) != \
+                character_knowledge._claim_words(claim):
+            continue
+        for next_number in (prior["source_order"], prior["source_order"]+1):
+            if next_number > len(sentences):
+                continue
+            sentence = sentences[next_number-1]
+            if re.search(rf"(?<!\w){re.escape(actor)}\s+(?:believed|believes|"
+                         rf"suspected|suspects)\s+{re.escape(prior['actor'])}'s\s+"
+                         r"(?:claim|story|account|statement)\b", sentence, re.I):
+                matches.append((prior, next_number))
+    return matches[0] if len(matches) == 1 else None
+
+
+def _source_certainty(actor, cited):
+    name = r"(?<!\w)" + re.escape(actor) + r"(?!\w)"
+    for sentence in cited:
+        match = re.search(rf"{name}\s+(wrongly\s+)?"
+                          r"(believed|believes|suspected|suspects|denied|denies)\b",
+                          sentence, re.I)
+        if match:
+            if match.group(1):
+                return "believes_wrongly"
+            verb = match.group(2).casefold()
+            return ("suspects" if verb.startswith("suspect") else
+                    "denies" if verb.startswith("den") else "believes")
+    return ""
+
+
 def validate(proposals, text):
     """Validate model proposals against original numbered source sentences."""
     sentences = mem.split_sentences(text)
@@ -118,7 +181,13 @@ def validate(proposals, text):
             continue
         cited = [sentences[i-1] for i in refs]
         evidence = " ".join(cited)
+        if kind in {"action", "observation"}:
+            claim = _complete_action(actor, claim, cited)
+        if not topic:
+            topic = claim[:100]
         if kind in {"belief", "observation"}:
+            if kind == "belief" and not certainty:
+                certainty = _source_certainty(actor, cited)
             proposed = {"character": actor, "topic": topic, "fact": claim,
                         "certainty": certainty or "knows", "evidence_numbers": refs}
             if kind == "belief" and proposed["certainty"] == "knows":
@@ -126,10 +195,23 @@ def validate(proposals, text):
                 continue
             valid, errors = character_knowledge.validate(
                 {"knowledge_changes": [proposed]}, text)
-            if errors:
+            linked = (_linked_belief(actor, claim, refs, sentences, accepted)
+                      if kind == "belief" and errors else None)
+            if errors and not (kind == "observation" and
+                               _explicit_action(actor, claim, cited) and
+                               character_knowledge._content_supported(claim, evidence)) and not linked:
                 rejected.append("perspective: " + errors[0])
                 continue
-            evidence = valid[0]["evidence"]
+            if valid:
+                evidence = valid[0]["evidence"]
+            certainty = proposed["certainty"]
+            if linked:
+                source_event, follow_number = linked
+                evidence = source_event["evidence"]
+                if follow_number != source_event["source_order"]:
+                    evidence += " " + sentences[follow_number-1]
+                refs = sorted(set(refs + [follow_number]))
+                certainty = _source_certainty(actor, [sentences[follow_number-1]])
         elif kind == "assertion":
             if not recipient or not any(
                     re.search(rf"(?<!\w){re.escape(actor)}\b[^.!?]{{0,65}}\b{SPEECH}\b",
@@ -198,6 +280,8 @@ def record(project, source_id, entries):
                  row["claim"], row["topic"], row["certainty"], row["source_order"],
                  row["start"], row["end"], row["evidence"]))
             count += result.rowcount
+    if count:
+        export_markdown(project)
     return count
 
 
@@ -219,3 +303,22 @@ def character_view(project, actor, *, historical=False):
     for row in rows:
         latest[row["topic"].casefold()] = row
     return list(latest.values())
+
+
+def export_markdown(project):
+    """Readable audit trail; statements and beliefs remain visibly attributed."""
+    target = Path(project["folder"]) / ".storyteller" / "memory" / "narrative-ledger.md"
+    if target.is_symlink():
+        raise ValueError("Refusing symbolic link for narrative ledger export")
+    lines = ["# Experimental narrative ledger", "",
+             "Statements and beliefs below are attributed, not world canon.", ""]
+    for row in timeline(project):
+        label = row["kind"].upper()
+        listener = f" to {row['recipient']}" if row["recipient"] else ""
+        lines.extend((f"- **{label}** {row['actor']}{listener}: {row['claim']}",
+                      f"  - Source: {row['source_id']} / sentence {row['source_order']} "
+                      f"(characters {row['start']}–{row['end']})",
+                      f"  - Evidence: {row['evidence']}"))
+    temp = target.with_suffix(".tmp")
+    temp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    os.replace(temp, target)
