@@ -1,15 +1,15 @@
-# Storyteller 0.8.0-rc1 — Local story memory for Jan
+# Storyteller 0.8.0 — Local story memory for Jan
 
 Storyteller acts as a small OpenAI-compatible gateway between Jan's chat UI and Jan's own Local API Server. It is **not** another chat application.
 
 - **Writing model (Jan):** your chosen model, currently Cydonia 24B for the demo.
 - **Memory model (CPU):** Qwen3.5-2B Q4_K_M (stored in `models/`).
-- **Storage:** ordinary Markdown inside each explicitly registered project folder.
+- **Storage:** readable Markdown plus local SQLite history inside each explicitly registered project folder.
 - **No service:** starts with a terminal and stops when that terminal closes.
 - **No cloud:** all model endpoints bind to `127.0.0.1`.
 - **Original chapters:** never edited.
 
-## Narrative memory preview
+## Narrative memory
 
 Select a project and press **N** to enable narrative memory. The setting persists
 and applies to the next Jan request. Current questions retrieve current character
@@ -25,9 +25,11 @@ keeps spoken claims separate from facts. It costs more CPU time; ordinary chat
 does not gain another model call. Data Dump remains timeless. Both imports and
 new conversation knowledge use one ordered character history for retrieval.
 
-This release candidate has passed gateway tests with a local mock writer. The
-final live Jan smoke test is pending. Implied corrections, semantic aliases,
-and arbitrary contradictions still require further work; extraction is imperfect.
+The 0.8 release passed a disposable-project check through Jan’s local Cydonia
+API, including current/history answers, delayed author-message learning,
+streaming, and response-learning OFF. This checked the API rather than Jan’s
+graphical chat interface. Implied corrections, semantic aliases, and arbitrary
+contradictions still require further work; extraction is imperfect.
 
 ## What normal chat saves
 
@@ -164,7 +166,7 @@ The launcher opens a Konsole control panel. It starts the gateway on port **1888
 Start **Jan → Settings → Local API Server** on port **1337**, then select your previously configured custom OpenAI-compatible provider:
 
 - Base URL: `http://127.0.0.1:18880/v1`
-- API key: `storyteller-local` (placeholder for Jan's UI)
+- API key: the same key configured in Jan's Local API Server. Storyteller forwards it to Jan; an unrelated placeholder causes an authentication error when Jan requires a key.
 - Demo model ID: `storyteller-proof`
 
 Storyteller sends the prompt plus relevant memory to Jan's Local API Server and streams the response back. It does not load a duplicate writing model.

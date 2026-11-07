@@ -1,0 +1,87 @@
+{
+  "model": "Cydonia-24B-v4.3-heretic-v3.IQ4_XS.gguf",
+  "requests": [
+    {
+      "prompt": "What does Oren know about the flute now? Answer in one short sentence.",
+      "answer": "Oren knows that the flute had never been destroyed, contrary to what he had believed.",
+      "seconds": 2.07,
+      "stream": false,
+      "injected_memory": "ESTABLISHED STORY REFERENCE (provided by the user's local Storyteller files).\nThe CURRENT STORY POSITION is the authoritative place to CONTINUE FROM.\nTreat Dump Info as timeless facts, never as a reason to advance time.\nDo not restart or repeat the latest scene; continue after it.\nUse other files to preserve continuity. Do not treat dialogue or speculation as canon.\nVERBATIM IMPORT EXCERPTS are source material; assess whether claims are real story facts,\nnot merely rumors, dialogue, hypothetical ideas or unreliable narration.\nIf the user's new writing explicitly changes a fact, follow the new event.\n\n### CHARACTER PERSPECTIVES (attributed; beliefs are not world facts)\n- Current, Oren knows: The flute had never been destroyed [source: later-correction; evidence: Oren discovered the flute had never been destroyed.]"
+    },
+    {
+      "prompt": "What did Oren believe about the flute before the correction? Answer in one short sentence.",
+      "answer": "Oren believed the flute was destroyed.",
+      "seconds": 0.42,
+      "stream": false,
+      "injected_memory": "ESTABLISHED STORY REFERENCE (provided by the user's local Storyteller files).\nThe CURRENT STORY POSITION is the authoritative place to CONTINUE FROM.\nTreat Dump Info as timeless facts, never as a reason to advance time.\nDo not restart or repeat the latest scene; continue after it.\nUse other files to preserve continuity. Do not treat dialogue or speculation as canon.\nVERBATIM IMPORT EXCERPTS are source material; assess whether claims are real story facts,\nnot merely rumors, dialogue, hypothetical ideas or unreliable narration.\nIf the user's new writing explicitly changes a fact, follow the new event.\n\n### CHARACTER PERSPECTIVES (attributed; beliefs are not world facts)\n- Earlier, Oren believes: The flute was destroyed [source: old-import; evidence: Oren believed the flute was destroyed.; superseded by source: later-correction]\n- Current, Oren knows: The flute had never been destroyed [source: later-correction; evidence: Oren discovered the flute had never been destroyed.]"
+    },
+    {
+      "prompt": "Oren suspected the observatory was beneath the lake. Reply only OK.",
+      "answer": "OK",
+      "seconds": 0.16,
+      "stream": false,
+      "injected_memory": "ESTABLISHED STORY REFERENCE (provided by the user's local Storyteller files).\nThe CURRENT STORY POSITION is the authoritative place to CONTINUE FROM.\nTreat Dump Info as timeless facts, never as a reason to advance time.\nDo not restart or repeat the latest scene; continue after it.\nUse other files to preserve continuity. Do not treat dialogue or speculation as canon.\nVERBATIM IMPORT EXCERPTS are source material; assess whether claims are real story facts,\nnot merely rumors, dialogue, hypothetical ideas or unreliable narration.\nIf the user's new writing explicitly changes a fact, follow the new event.\n\n### CHARACTER PERSPECTIVES (attributed; beliefs are not world facts)\n- Current, Oren knows: The flute had never been destroyed [source: later-correction; evidence: Oren discovered the flute had never been destroyed.]"
+    },
+    {
+      "prompt": "What does Oren suspect about the observatory? Answer in one short sentence.",
+      "answer": "Oren suspects the observatory was beneath the lake.",
+      "seconds": 0.56,
+      "stream": true,
+      "injected_memory": "ESTABLISHED STORY REFERENCE (provided by the user's local Storyteller files).\nThe CURRENT STORY POSITION is the authoritative place to CONTINUE FROM.\nTreat Dump Info as timeless facts, never as a reason to advance time.\nDo not restart or repeat the latest scene; continue after it.\nUse other files to preserve continuity. Do not treat dialogue or speculation as canon.\nVERBATIM IMPORT EXCERPTS are source material; assess whether claims are real story facts,\nnot merely rumors, dialogue, hypothetical ideas or unreliable narration.\nIf the user's new writing explicitly changes a fact, follow the new event.\n\n### CHARACTER PERSPECTIVES (attributed; beliefs are not world facts)\n- Current, Oren suspects: The observatory was beneath the lake [source: 8cc39dc6defce7dbe61bcc77423c2672b3cbf0f48c4af94fd6b536730e2ac91a; evidence: Oren suspected the observatory was beneath the lake.]\n- Current, Oren knows: The flute had never been destroyed [source: later-correction; evidence: Oren discovered the flute had never been destroyed.]"
+    }
+  ],
+  "checks": {
+    "persistent_setting": true,
+    "current_corrected": true,
+    "history_available": true,
+    "same_request_isolated": true,
+    "next_request_learned": true,
+    "reply_learning_off": true,
+    "streaming_response": true
+  },
+  "scope": "Live Jan CLI model API and Storyteller HTTP gateway; no Jan UI automation",
+  "knowledge": [
+    {
+      "sequence": 1,
+      "character": "Oren",
+      "topic": "flute fate",
+      "fact": "The flute was destroyed",
+      "certainty": "believes",
+      "evidence": "Oren believed the flute was destroyed.",
+      "source_id": "old-import",
+      "scope": "timeline",
+      "source_order": 1
+    },
+    {
+      "sequence": 2,
+      "character": "Oren",
+      "topic": "flute condition",
+      "fact": "The flute had never been destroyed",
+      "certainty": "knows",
+      "evidence": "Oren discovered the flute had never been destroyed.",
+      "source_id": "later-correction",
+      "scope": "timeline",
+      "source_order": 1
+    },
+    {
+      "sequence": 3,
+      "character": "Oren",
+      "topic": "observatory location",
+      "fact": "The observatory was beneath the lake",
+      "certainty": "suspects",
+      "evidence": "Oren suspected the observatory was beneath the lake.",
+      "source_id": "8cc39dc6defce7dbe61bcc77423c2672b3cbf0f48c4af94fd6b536730e2ac91a",
+      "scope": "timeline",
+      "source_order": 1
+    }
+  ],
+  "cleanup_completed": true,
+  "date": "2026-11-07",
+  "revision": "c2454f190cb555628d09f9a89ebf63d48c5102d2",
+  "review": {
+    "writer_answers": "Current correction, prior belief, acknowledgement, and later suspicion answered correctly on inspection.",
+    "cleanup": "Ports 1337 and 18885 closed; no llama-server processes remained.",
+    "limitations": "Jan CLI API, not graphical chat interaction. Synthetic disposable story only. Timings are warm short-request observations, not a throughput benchmark.",
+    "prior_attempts": "Initial request rejected by Jan authentication. A later run reached streaming but the acceptance reader rejected a null content chunk; reader fixed and deterministically checked before this successful rerun."
+  }
+}
