@@ -1,4 +1,4 @@
-# Storyteller 0.7.1 — Local story memory for Jan
+# Storyteller 0.8.0-rc1 — Local story memory for Jan
 
 Storyteller acts as a small OpenAI-compatible gateway between Jan's chat UI and Jan's own Local API Server. It is **not** another chat application.
 
@@ -8,6 +8,26 @@ Storyteller acts as a small OpenAI-compatible gateway between Jan's chat UI and 
 - **No service:** starts with a terminal and stops when that terminal closes.
 - **No cloud:** all model endpoints bind to `127.0.0.1`.
 - **Original chapters:** never edited.
+
+## Narrative memory preview
+
+Select a project and press **N** to enable narrative memory. The setting persists
+and applies to the next Jan request. Current questions retrieve current character
+knowledge; questions containing "before" or "earlier" can retrieve previous
+beliefs with their source evidence. Explicit corrections are reconciled across
+different topic labels, while unrelated facts remain separate. The readable
+`character-knowledge.md` follows the selected view.
+
+This works with the existing memory model and saved character history. If the
+optional **K** model is enabled, new Catch Up imports use one broader narrative
+pass instead of the focused perspective pass. It can capture named witnesses and
+keeps spoken claims separate from facts. It costs more CPU time; ordinary chat
+does not gain another model call. Data Dump remains timeless. Both imports and
+new conversation knowledge use one ordered character history for retrieval.
+
+This release candidate has passed gateway tests with a local mock writer. The
+final live Jan smoke test is pending. Implied corrections, semantic aliases,
+and arbitrary contradictions still require further work; extraction is imperfect.
 
 ## What normal chat saves
 
@@ -107,6 +127,7 @@ at login.
 | T | Show the current story continuation point |
 | P | Edit, preview and toggle optional per-project prompt prefix/suffix |
 | M | Toggle learning from generated writer responses for this project |
+| N | Toggle current/historical narrative memory for this project |
 | K | Toggle optional local perspective analysis; choose a local 9B GGUF on first enable |
 | Enter | Show project information and analysis/review counts |
 | S | Start or stop the gateway and CPU memory model |
@@ -368,8 +389,9 @@ For an isolated comparison of Catch Up against the experimental event ledger,
 set `STORYTELLER_LEDGER_SHADOW_ENDPOINT` to a locally running
 `http://127.0.0.1:PORT/v1/chat/completions` endpoint before `run`. This adds
 source-cited episodes under that project's `.storyteller/memory/narrative-ledger.md`
-and `.sqlite3`. It does not affect canon, retrieval, or the writing model, and
-an unavailable shadow model does not interrupt Catch Up. Leave the variable
-unset for ordinary imports.
+and `.sqlite3`. With **N** off, these are comparison records only. With **N** on,
+accepted character perspectives also enter the shared character history used by
+retrieval. An unavailable model does not interrupt the base Catch Up extraction.
+Leave the variable unset for ordinary use; **N** and **K** provide the panel controls.
 
 No systemd service or automatic login startup is installed.

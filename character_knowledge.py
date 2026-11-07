@@ -3,7 +3,7 @@
 Inspired by Narra's append-only knowledge states; no data migration is needed.
 """
 import hashlib
-from contextlib import contextmanager
+from contextlib import contextmanager, closing
 import os
 import re
 import sqlite3
@@ -270,6 +270,8 @@ def database(project):
         columns = {row[1] for row in db.execute("PRAGMA table_info(knowledge)")}
         if "scope" not in columns:
             db.execute("ALTER TABLE knowledge ADD COLUMN scope TEXT NOT NULL DEFAULT 'timeline'")
+        if "source_order" not in columns:
+            db.execute("ALTER TABLE knowledge ADD COLUMN source_order INTEGER NOT NULL DEFAULT 0")
         yield db
         db.commit()
     except BaseException:
@@ -293,10 +295,10 @@ def record(project, source_id, entries, *, timeline=True):
                             item["certainty"]))
             identifier = hashlib.sha256(key.encode()).hexdigest()
             result = db.execute("""INSERT OR IGNORE INTO knowledge
-                (id,character,topic,fact,certainty,evidence,source_id,scope)
-                VALUES (?,?,?,?,?,?,?,?)""", (identifier, item["character"], topic,
+                (id,character,topic,fact,certainty,evidence,source_id,scope,source_order)
+                VALUES (?,?,?,?,?,?,?,?,?)""", (identifier, item["character"], topic,
                 item["fact"], item["certainty"], item["evidence"], source_id,
-                "timeline" if timeline else "baseline"))
+                "timeline" if timeline else "baseline", item.get("source_order", 0)))
             inserted += result.rowcount
     if inserted:
         export_markdown(project)
@@ -369,6 +371,12 @@ def export_markdown(project):
 
 def current(project):
     """Latest state per character/topic; older states remain queryable in SQLite."""
+    if project.get("narrative_memory", False):
+        import narrative_memory
+        return [{"character": row["actor"], "topic": row["topic"], "fact": row["claim"],
+                 "certainty": row["certainty"], "evidence": row["evidence"],
+                 "source_id": row["source_id"]}
+                for row in narrative_memory.snapshot(project) if row["status"] == "current"]
     path = Path(project["folder"]) / ".storyteller" / "memory" / "character-knowledge.sqlite3"
     if not path.is_file() or path.is_symlink():
         return []
@@ -388,6 +396,10 @@ def current(project):
 
 def relevant(project, query, terms, limit=1400, *, temporal_query=None):
     """Attributed perspective snippets for an outgoing writing request."""
+    if project.get("narrative_memory", False):
+        import narrative_memory
+        return narrative_memory.relevant(project, query, terms, limit=limit,
+                                         temporal_query=temporal_query)
     query_terms = terms(query)
     temporal = bool(re.search(r"\b(?:before|earlier|previously|initially|formerly|"
                               r"used to|at the time|what did .* believe|what did .* know)\b",
@@ -415,6 +427,27 @@ def relevant(project, query, terms, limit=1400, *, temporal_query=None):
                     earlier.append(history)
         lines.extend(earlier + [line])
     return "\n".join(lines)
+
+
+def history(project):
+    """One read-only SQLite snapshot, shared by imports and conversation learning.
+
+    Baseline reference knowledge precedes narrative updates even when a Data
+    Dump was imported later. Old databases are read without modifying them.
+    """
+    path = Path(project["folder"]) / ".storyteller" / "memory" / "character-knowledge.sqlite3"
+    if not path.is_file() or path.is_symlink():
+        return []
+    with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)) as db:
+        db.execute("BEGIN")
+        columns = {row[1] for row in db.execute("PRAGMA table_info(knowledge)")}
+        scope = "scope" if "scope" in columns else "'timeline'"
+        order = "CASE WHEN source_order>0 THEN source_order ELSE sequence END" if "source_order" in columns else "sequence"
+        fields = ("sequence", "character", "topic", "fact", "certainty", "evidence", "source_id",
+                  "scope", "source_order")
+        return [dict(zip(fields, row)) for row in db.execute(
+            f"SELECT sequence,character,topic,fact,certainty,evidence,source_id,{scope},{order} "
+            f"FROM knowledge ORDER BY ({scope}='timeline'),sequence")]
 
 
 def _earlier_states(project, current_row):

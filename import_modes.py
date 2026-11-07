@@ -573,6 +573,8 @@ def run_import(project, mode, source, plan=None):
         # remain authoritative until the comparison demonstrates an improvement.
         ledger_url = (os.environ.get("STORYTELLER_LEDGER_SHADOW_ENDPOINT", "").strip()
                       if mode == "catchup" else "")
+        if project.get("narrative_memory", False) and mode == "catchup" and not ledger_url:
+            ledger_url = perspective_url
         previous_summary = ""
         known = []
         for doc in docs:
@@ -603,7 +605,8 @@ def run_import(project, mode, source, plan=None):
                     valid, rejected, summary = validate_records(
                         raw, chunk, doc["text"], mode)
                     model_perspectives, knowledge_rejected = character_knowledge.validate(raw, chunk)
-                    if perspective_url and needs_perspective_pass(chunk):
+                    if (perspective_url and needs_perspective_pass(chunk) and
+                            not (ledger_url and project.get("narrative_memory", False))):
                         try:
                             focused = request_perspectives(perspective_url, numbered)
                             focused_rows, focused_rejected = character_knowledge.validate(focused, chunk)
@@ -615,6 +618,24 @@ def run_import(project, mode, source, plan=None):
                     perspectives = character_knowledge.combine(
                         model_perspectives, character_knowledge.explicit_perspectives(chunk))
                     source_ref = f"import:{mode}:{jobid}:section:{section_number}"
+                    episodes = None
+                    if ledger_url:
+                        try:
+                            proposals = narrative_ledger.propose(chunk, ledger_url)
+                            episodes, ledger_rejected = narrative_ledger.validate(proposals, chunk)
+                            episodes = narrative_ledger.combine_perspectives(episodes, perspectives, chunk)
+                            if project.get("narrative_memory", False):
+                                # Publish once to the shared history before completing
+                                # this section; later conversation updates use its order.
+                                episode_perspectives = [
+                                    {"character": e["actor"], "fact": e["claim"],
+                                     "topic": e["topic"], "certainty": e["certainty"],
+                                     "evidence": e["evidence"], "source_order": e["source_order"]}
+                                    for e in episodes if e["kind"] in {"belief", "observation"}]
+                                perspectives = character_knowledge.combine(episode_perspectives,
+                                                                           perspectives)
+                        except Exception as exc:
+                            say(f"  optional narrative pass unavailable: {type(exc).__name__}")
                     count = mem.apply_changes(project, source_ref, valid,
                                               timeline=(mode == "catchup"))
                     count += character_knowledge.record(project, source_ref, perspectives,
@@ -632,13 +653,8 @@ def run_import(project, mode, source, plan=None):
                         (jobid, section_number, str(doc["path"]), i, "done",
                          count, len(rejected), summary))
                     db.commit()
-                    if ledger_url:
+                    if episodes is not None:
                         try:
-                            proposals = narrative_ledger.propose(chunk, ledger_url)
-                            episodes, ledger_rejected = narrative_ledger.validate(
-                                proposals, chunk)
-                            episodes = narrative_ledger.combine_perspectives(
-                                episodes, perspectives, chunk)
                             ledger_saved = narrative_ledger.record(
                                 project, source_ref, episodes)
                             say(f"  shadow ledger: {ledger_saved} episodes, "

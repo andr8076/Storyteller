@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Storyteller 0.7.1: project-scoped lore injection, recording, CPU memory extraction.
+"""Storyteller 0.8.0-rc1: project-scoped lore injection and narrative memory.
 
 No daemon, plugins, Jan file editing, or extra Python packages required.
 All traffic stays on 127.0.0.1. Run only when wanted.
@@ -206,9 +206,13 @@ def select_memory(project, messages):
             remaining -= len(snippet)
     latest_user = next((text_from_content(m.get("content")) for m in reversed(messages)
                         if isinstance(m, dict) and m.get("role") == "user"), "")
-    perspective = character_knowledge.relevant(project, " ".join(latest), terms,
-                                                limit=min(remaining, 1700),
-                                                temporal_query=latest_user)
+    try:
+        perspective = character_knowledge.relevant(project, " ".join(latest), terms,
+                                                    limit=min(remaining, 1700),
+                                                    temporal_query=latest_user)
+    except (sqlite3.Error, OSError, ValueError) as exc:
+        print(f"[Storyteller] character memory unavailable: {type(exc).__name__}", flush=True)
+        perspective = ""
     if perspective:
         parts.append("### CHARACTER PERSPECTIVES (attributed; beliefs are not world facts)\n" + perspective)
         selected.append("memory/character-knowledge.sqlite3")
@@ -554,7 +558,7 @@ def serve(args):
     Gateway.projects = projects
     Gateway.upstream = address
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Gateway)
-    print(f"Storyteller 0.7.1 on http://127.0.0.1:{args.port}/v1", flush=True)
+    print(f"Storyteller 0.8.0-rc1 on http://127.0.0.1:{args.port}/v1", flush=True)
     for project in projects.values():
         print(f"  {project['alias']} -> {project['folder']}", flush=True)
     print("Only runs while this terminal is open. Press Ctrl+C to stop.", flush=True)

@@ -86,26 +86,31 @@ def project(rows):
     observation; a suspicion or another character's statement cannot retract
     knowledge. Equal sentence order cannot establish which claim came later.
     """
-    result = []
+    result, parsed_rows, active = [], [], {}
     for row in rows:
         if row["kind"] not in {"belief", "observation"}:
             continue
         incoming = dict(row, status="current", superseded_by=None, supersedes=[])
         parsed = proposition(row["claim"], row["actor"])
-        for index, earlier in enumerate(result):
-            if earlier["status"] != "current" or earlier["actor"].casefold() != row["actor"].casefold():
-                continue
+        identity = ("proposition", parsed.identity) if parsed else (
+            "literal", " ".join(re.findall(r"\w+", row["claim"].casefold())))
+        key = row["actor"].casefold(), identity
+        candidates = active.get(key, [])
+        retained = []
+        for index in candidates:
+            earlier = result[index]
             if (earlier["source_id"] == row["source_id"] and
                     row["source_order"] <= earlier["source_order"]):
+                retained.append(index)
                 continue
-            prior = proposition(earlier["claim"], earlier["actor"])
+            prior = parsed_rows[index]
             reason = ""
             if (parsed and prior and parsed.complete and prior.complete and
                     parsed.identity == prior.identity and
                     bool(parsed.negation) != bool(prior.negation) and
                     row["kind"] == "observation" and row["certainty"] == "knows"):
                 reason = "Later observed evidence explicitly contradicts this proposition."
-            elif equivalent(earlier, row) and (
+            elif (not parsed or parsed.equivalent == prior.equivalent) and (
                     row["certainty"] == earlier["certainty"] or
                     (row["kind"] == "observation" and row["certainty"] == "knows")):
                 reason = "Later evidence establishes the same proposition."
@@ -114,5 +119,9 @@ def project(rows):
                 earlier["superseded_by"] = len(result)
                 earlier["supersession_reason"] = reason
                 incoming["supersedes"].append(index)
+            else:
+                retained.append(index)
+        active[key] = retained + [len(result)]
         result.append(incoming)
+        parsed_rows.append(parsed)
     return result

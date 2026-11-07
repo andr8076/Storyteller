@@ -96,6 +96,20 @@ def toggle_response_learning(alias):
     return project["learn_from_responses"]
 
 
+def toggle_narrative_memory(alias):
+    config = storyteller.load_config()
+    project = next((p for p in config["projects"] if p["alias"] == alias), None)
+    if project is None:
+        raise ValueError("Project no longer exists.")
+    project["narrative_memory"] = not project.get("narrative_memory", False)
+    storyteller.save_config(config)
+    history = Path(project["folder"]) / ".storyteller/memory/character-knowledge.sqlite3"
+    if history.is_file() and not history.is_symlink():
+        import character_knowledge
+        character_knowledge.export_markdown(project)
+    return project["narrative_memory"]
+
+
 def set_perspective_analysis(enabled, model_file=None):
     """Persist a local model choice without starting a service at login."""
     config = storyteller.load_config()
@@ -356,8 +370,10 @@ class Panel(ImportUI, AffixUI):
             self.put(detail_y+1, 3, "Folder: " + project["folder"])
             self.put(detail_y+2, 3, "Writer: " + project["model"])
             self.put(detail_y+3, 3, "Jan model ID: " + project["alias"])
-            self.put(detail_y+4, 3, "Learn from writer replies: " +
-                     ("ON" if project.get("learn_from_responses", True) else "OFF"))
+            self.put(detail_y+4, 3, "Learn replies: " +
+                     ("ON" if project.get("learn_from_responses", True) else "OFF") +
+                     " (M)  Narrative memory: " +
+                     ("ON" if project.get("narrative_memory", False) else "OFF") + " (N)")
         else:
             self.put(detail_y+1, 3, "Choose an existing folder when creating a project.")
         activity_y = detail_y+6
@@ -606,6 +622,8 @@ class Panel(ImportUI, AffixUI):
                 "Folder: " + project["folder"] + "\n\n"
                 "Learn from writer replies: " +
                 ("ON" if project.get("learn_from_responses", True) else "OFF") + " (M toggles)\n"
+                "Narrative memory: " +
+                ("ON" if project.get("narrative_memory", False) else "OFF") + " (N toggles)\n"
                 f"Completed analyses: {done}\n"
                 f"Failed analyses: {errors}\n"
                 f"Needs review: {reviews}\n"                f"Import jobs: {len(import_jobs)}\n"                f"Import review entries: {import_reviews} (press V)\n"
@@ -629,6 +647,7 @@ class Panel(ImportUI, AffixUI):
             "QUICK HELP",
             "P / Prefix/Suffix: edit and toggle optional prompt text.\n"
             "M / Reply Learning: toggle analysis of generated scenes per project.\n"
+            "N / Narrative Memory: retrieve current and earlier character knowledge.\n"
             "K / Perspective Analysis: optional local 9B model on next start.\n"
             "A / Add: register a story folder and choose its writing model.\n"
             "E / Edit: change name, folder or writing model.\n"
@@ -689,6 +708,10 @@ class Panel(ImportUI, AffixUI):
                 enabled = toggle_response_learning(projects[self.selected]["alias"])
                 self.notice("Learning from writer replies is " + ("ON" if enabled else "OFF") +
                             ". Author messages are still analyzed.")
+            elif projects and key in (ord("n"), ord("N")):
+                enabled = toggle_narrative_memory(projects[self.selected]["alias"])
+                self.notice("Narrative memory " + ("ON" if enabled else "OFF") +
+                            ". Takes effect on the next request.")
             elif key in (ord("k"), ord("K")):
                 config = storyteller.load_config()
                 enable = not config.get("perspective_analysis", False)
