@@ -4,22 +4,31 @@ The append-only events.jsonl remains authoritative. This disposable SQLite FTS
 index is rebuilt if the log is replaced or truncated and never changes source.
 """
 import hashlib
+from contextlib import closing, contextmanager
 import json
 import re
 import sqlite3
 from pathlib import Path
 
 
+@contextmanager
 def _open_index(path):
     if path.is_symlink():
         raise ValueError("Refusing symbolic link for event index")
     db = sqlite3.connect(path, timeout=2)
-    db.execute("CREATE TABLE IF NOT EXISTS indexed (event_id TEXT PRIMARY KEY)")
-    db.execute("CREATE TABLE IF NOT EXISTS position (offset INTEGER NOT NULL)")
-    db.execute("""CREATE VIRTUAL TABLE IF NOT EXISTS event_search USING fts5(
-        event_id UNINDEXED, entity, fact, evidence, source_id UNINDEXED,
-        tokenize='porter unicode61')""")
-    return db
+    try:
+        db.execute("CREATE TABLE IF NOT EXISTS indexed (event_id TEXT PRIMARY KEY)")
+        db.execute("CREATE TABLE IF NOT EXISTS position (offset INTEGER NOT NULL)")
+        db.execute("""CREATE VIRTUAL TABLE IF NOT EXISTS event_search USING fts5(
+            event_id UNINDEXED, entity, fact, evidence, source_id UNINDEXED,
+            tokenize='porter unicode61')""")
+        yield db
+        db.commit()
+    except BaseException:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 def sync(project):
@@ -84,7 +93,7 @@ def relevant(project, query, terms, *, limit=1600):
     if index is None:
         return ""
     expression = " OR ".join('"' + token.replace('"', '""') + '"' for token in tokens)
-    with sqlite3.connect(f"file:{index}?mode=ro", uri=True, timeout=2) as db:
+    with closing(sqlite3.connect(f"file:{index}?mode=ro", uri=True, timeout=2)) as db:
         rows = db.execute("""SELECT entity, fact, evidence, source_id
             FROM event_search WHERE event_search MATCH ?
             ORDER BY bm25(event_search, 0, 4, 2) LIMIT 16""",

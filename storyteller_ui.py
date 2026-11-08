@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import atexit
+from contextlib import closing
 import curses
 import json
 import os
@@ -161,7 +162,7 @@ def project_counts(project):
     db = base / "processing.sqlite3"
     if db.is_file():
         try:
-            with sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=.2) as conn:
+            with closing(sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=.2)) as conn:
                 count = conn.execute("SELECT COUNT(*) FROM processed WHERE status='done'").fetchone()[0]
                 errors = conn.execute("SELECT COUNT(*) FROM processed WHERE status='error'").fetchone()[0]
         except (OSError, sqlite3.Error):

@@ -13,6 +13,7 @@
 - The source_order column is an additive write-time schema extension. Old databases can be read without migration, and all existing history is preserved. The readable character-knowledge.md follows the selected view.
 - Projection now indexes candidate propositions rather than comparing every record with every earlier record. A 600-record synthetic fixture fell from 2.436s to 0.004s locally.
 - Explicit aliases such as “Mara Ashford, also known as the Red Fox” are stored in the same project-local history database. Alias facts resolve to one canonical character for current/history views and retrieval. Conflicting links remain unresolved; no name similarity is treated as identity.
+- SQLite connections used by event retrieval, character-history reads, the memory worker, and the control-panel status view now close explicitly. The remote full suite no longer emits the previous event-index ResourceWarnings.
 
 ## Verified
 - 81 tests pass locally on the release-candidate code.

@@ -6,6 +6,7 @@ A structured model response is treated as untrusted input and validated
 against an exact quote from the completed assistant scene.
 """
 import hashlib
+from contextlib import closing
 from itertools import combinations
 import json
 import os
@@ -718,7 +719,7 @@ class Worker:
         if not queue.exists():
             return
         database = base / "processing.sqlite3"
-        with sqlite3.connect(database, timeout=20) as db:
+        with closing(sqlite3.connect(database, timeout=20)) as db, db:
             db.execute("""CREATE TABLE IF NOT EXISTS processed
                          (id TEXT PRIMARY KEY, status TEXT NOT NULL,
                           changes INTEGER DEFAULT 0, reason TEXT, processed_at TEXT)""")

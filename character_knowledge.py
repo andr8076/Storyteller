@@ -616,7 +616,7 @@ def _earlier_states(project, current_row):
     path = Path(project["folder"]) / ".storyteller" / "memory" / "character-knowledge.sqlite3"
     if not path.is_file() or path.is_symlink():
         return []
-    with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as db:
+    with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as db:
         columns = {row[1] for row in db.execute("PRAGMA table_info(knowledge)")}
         timeline = "AND scope='timeline'" if "scope" in columns else ""
         rows = db.execute(f"""SELECT fact,certainty,evidence,source_id FROM knowledge
