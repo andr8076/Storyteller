@@ -8,6 +8,7 @@ Never alter source documents; only write inside <project>/.storyteller.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -223,18 +224,26 @@ def write_status(project, jobid, **values):
     return status
 
 
+@contextmanager
 def database(project):
     path = Path(project["folder"]) / ".storyteller" / "imports" / "progress.sqlite3"
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path, timeout=25)
-    conn.execute("""CREATE TABLE IF NOT EXISTS sections (
-        job_id TEXT NOT NULL, section_num INTEGER NOT NULL,
-        source TEXT NOT NULL, chunk_index INTEGER NOT NULL,
-        status TEXT NOT NULL, facts INTEGER NOT NULL DEFAULT 0,
-        rejected INTEGER NOT NULL DEFAULT 0,
-        summary TEXT NOT NULL DEFAULT '',
-        PRIMARY KEY(job_id,section_num))""")
-    return conn
+    try:
+        conn.execute("""CREATE TABLE IF NOT EXISTS sections (
+            job_id TEXT NOT NULL, section_num INTEGER NOT NULL,
+            source TEXT NOT NULL, chunk_index INTEGER NOT NULL,
+            status TEXT NOT NULL, facts INTEGER NOT NULL DEFAULT 0,
+            rejected INTEGER NOT NULL DEFAULT 0,
+            summary TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY(job_id,section_num))""")
+        yield conn
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def _split_numbered(numbered):
