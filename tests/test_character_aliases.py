@@ -25,7 +25,7 @@ class CharacterAliasTests(unittest.TestCase):
                    "fact": "The key was inside the drawer", "certainty": "knows",
                    "evidence": "The Red Fox saw the key inside the drawer.",
                    "source_order": 1}
-            self.assertEqual(knowledge.record(project, "scene", [row], source=source), 2)
+            self.assertEqual(knowledge.record(project, "scene", [row], source=source), 1)
             current = knowledge.current(project)
             self.assertEqual(current[0]["character"], "Mara Ashford")
             self.assertEqual(current[0]["aliases"], ["the Red Fox"])

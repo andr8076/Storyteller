@@ -426,9 +426,10 @@ def canonical_character(project, character):
 
 def record(project, source_id, entries, *, timeline=True, source=None):
     """Append states; replaying a source never duplicates its states."""
-    alias_count = record_aliases(project, source_id, source) if source else 0
+    if source:
+        record_aliases(project, source_id, source)
     if not entries:
-        return alias_count
+        return 0
     path = Path(project["folder"]) / ".storyteller" / "memory" / "character-knowledge.sqlite3"
     if path.is_file() and not path.is_symlink():
         with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)) as source_db:
@@ -454,7 +455,7 @@ def record(project, source_id, entries, *, timeline=True, source=None):
             inserted += result.rowcount
     if inserted:
         export_markdown(project)
-    return inserted + alias_count
+    return inserted
 
 
 def reconcile_topic(db, item):
