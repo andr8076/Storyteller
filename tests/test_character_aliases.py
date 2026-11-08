@@ -1,8 +1,11 @@
 """Evidence-backed character identity links for narrative retrieval."""
 import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 import character_knowledge as knowledge
+import memory_worker
 import storyteller
 
 
@@ -47,6 +50,20 @@ class CharacterAliasTests(unittest.TestCase):
             knowledge.record(project, "three", [row])
             self.assertEqual(knowledge.current(project)[0]["character"], "the Raven")
             self.assertEqual(knowledge.aliases(project, "Mara Ashford"), [])
+
+    def test_normal_learning_records_alias_from_author_source(self):
+        with tempfile.TemporaryDirectory() as folder:
+            project = {"alias": "fiction", "folder": folder, "model": "writer",
+                       "learn_from_responses": False}
+            storyteller.ensure_memory(Path(folder))
+            storyteller.record_user_message(project, [{
+                "role": "user",
+                "content": "Mara Ashford, also known as the Red Fox, carries a brass key.",
+            }])
+            with patch.object(memory_worker, "request_json",
+                              return_value={"changes": [], "knowledge_changes": []}):
+                memory_worker.Worker([project]).process_project(project)
+            self.assertEqual(knowledge.aliases(project, "Mara Ashford"), ["the Red Fox"])
 
 
 if __name__ == "__main__":
