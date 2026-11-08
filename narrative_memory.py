@@ -15,7 +15,8 @@ def snapshot(project):
              "actor": r["character"], "claim": r["fact"], "topic": r["topic"],
              "certainty": r["certainty"], "source_id": r["source_id"],
              "source_order": r["source_order"], "evidence": r["evidence"],
-             "scope": r["scope"], "sequence": r["sequence"]}
+             "scope": r["scope"], "sequence": r["sequence"],
+             "aliases": r.get("aliases", [])}
             for r in character_knowledge.history(project)]
     return narrative_projection.project(rows)
 
@@ -33,7 +34,8 @@ def relevant(project, query, terms, limit=1700, *, temporal_query=None):
     for index, row in enumerate(rows):
         if row["status"] == "historical" and not temporal:
             continue
-        score = 3 * len(query_terms & terms(row["actor"]))
+        score = 3 * len(query_terms & terms(row["actor"] + " " +
+                                             " ".join(row.get("aliases", []))))
         score += len(query_terms & terms(row["topic"] + " " + row["claim"]))
         if score:
             priority = int(temporal and row["status"] == "historical")
@@ -45,7 +47,10 @@ def relevant(project, query, terms, limit=1700, *, temporal_query=None):
         correction = ""
         if row["superseded_by"] is not None:
             correction = f"; superseded by source: {rows[row['superseded_by']]['source_id']}"
-        line = (f"- {label}, {row['actor']} {row['certainty'].replace('_', ' ')}: "
+        actor = row["actor"]
+        if row.get("aliases"):
+            actor += " (also known as " + ", ".join(row["aliases"]) + ")"
+        line = (f"- {label}, {actor} {row['certainty'].replace('_', ' ')}: "
                 f"{row['claim']} [source: {row['source_id']}; evidence: {row['evidence']}"
                 f"{correction}]")
         cost = len(line) + bool(lines)

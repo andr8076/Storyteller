@@ -748,7 +748,8 @@ class Worker:
                         changes, rejects, perspectives = extract(
                             source, include_knowledge=True, author_message=True)
                         count = apply_changes(project, identifier, changes)
-                        count += character_knowledge.record(project, identifier, perspectives)
+                        count += character_knowledge.record(project, identifier, perspectives,
+                                                             source=source)
                         if rejects:
                             with open(base / "review.jsonl", "a", encoding="utf-8") as f:
                                 for reason, detail in rejects:
@@ -795,7 +796,8 @@ class Worker:
                     archive_generated_scene(project, identifier, scene)
                     changes, rejects, perspectives = extract(scene, include_knowledge=True)
                     count = apply_changes(project, identifier, changes)
-                    count += character_knowledge.record(project, identifier, perspectives)
+                    count += character_knowledge.record(project, identifier, perspectives,
+                                                         source=scene)
                     if rejects:
                         # A human can inspect untrusted or uncertain suggestions.
                         with open(base / "review.jsonl", "a", encoding="utf-8") as f:

@@ -639,7 +639,7 @@ def run_import(project, mode, source, plan=None):
                     count = mem.apply_changes(project, source_ref, valid,
                                               timeline=(mode == "catchup"))
                     count += character_knowledge.record(project, source_ref, perspectives,
-                                                        timeline=(mode == "catchup"))
+                                                        timeline=(mode == "catchup"), source=chunk)
                     rejected.extend({"reason": "knowledge: " + reason, "detail": ""}
                                     for reason in knowledge_rejected)
                     if mode == "dump":

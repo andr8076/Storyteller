@@ -28,6 +28,11 @@ PROPOSITION_FILLER = {"the", "a", "an", "is", "was", "are", "were", "has", "had"
                       "that", "this", "it", "its", "in", "on", "at", "of", "to",
                       "from", "with", "by", "and", "but", "as", "there"}
 
+ALIAS_FILLER = {"the", "a", "an", "also", "known", "as", "called", "whose",
+               "real", "name", "was", "is", "really", "actually", "formerly"}
+ALIAS_STOPWORDS = {"and", "but", "because", "when", "while", "after", "before",
+                   "who", "which", "that", "with", "from", "said", "told"}
+
 
 def _content_supported(fact, source):
     """Require every stated detail, not merely a majority of shared words."""
@@ -246,6 +251,67 @@ def combine(model_entries, explicit_entries):
     return selected
 
 
+def _display_name(value):
+    """Normalize an explicitly stated name without guessing an identity."""
+    value = re.sub(r"^[\"'“‘(]+|[\"'”’),.;:!?]+$", "", value.strip())
+    return re.sub(r"\s+", " ", value)
+
+
+def _name_key(value):
+    value = re.sub(r"^(?:the|a|an)\s+", "", value.casefold().strip())
+    return " ".join(re.findall(r"[a-z0-9]+", value))
+
+
+def _valid_alias_pair(alias, canonical):
+    alias, canonical = _display_name(alias), _display_name(canonical)
+    if not (2 <= len(alias) <= 80 and 2 <= len(canonical) <= 80):
+        return False
+    if _name_key(alias) == _name_key(canonical) or not _name_key(alias):
+        return False
+    alias_words = _name_key(alias).split()
+    canonical_words = _name_key(canonical).split()
+    if not (1 <= len(alias_words) <= 5 and 1 <= len(canonical_words) <= 5):
+        return False
+    if set(alias_words) & ALIAS_STOPWORDS or set(canonical_words) & ALIAS_STOPWORDS:
+        return False
+    return any(char.isalpha() for char in alias + canonical)
+
+
+def explicit_aliases(text):
+    """Extract only explicit, source-backed identity links.
+
+    A name is not merged merely because it resembles another name. The source
+    must say ``known as``, ``called``, or ``real name``; ambiguous title prose
+    remains separate for human review.
+    """
+    if not isinstance(text, str) or not text.strip():
+        return []
+    name = r"[A-Z][A-Za-z0-9'’\-]*(?:\s+[A-Z][A-Za-z0-9'’\-]*){0,4}"
+    alias = r"(?:the\s+)?[A-Za-z][A-Za-z0-9'’\-]*(?:\s+[A-Za-z][A-Za-z0-9'’\-]*){0,4}"
+    patterns = (
+        re.compile(rf"(?P<canonical>{name})\s*,?\s+(?:also\s+)?(?:known|called)\s+as\s+(?P<alias>{alias})", re.I),
+        re.compile(rf"(?P<alias>{alias})\s*,?\s+whose\s+real\s+name\s+was\s+(?P<canonical>{name})", re.I),
+        re.compile(rf"(?P<canonical>{name})\s*\(\s*(?P<alias>{alias})\s*\)", re.I),
+    )
+    found = []
+    for sentence in re.split(r"(?<=[.!?])\s+", text.strip()):
+        for pattern in patterns:
+            match = pattern.search(sentence)
+            if not match:
+                continue
+            canonical = _display_name(match.group("canonical"))
+            alias_name = _display_name(match.group("alias"))
+            if not _valid_alias_pair(alias_name, canonical):
+                continue
+            found.append({"alias": alias_name, "canonical": canonical,
+                          "evidence": sentence.strip()})
+            break
+    unique = {}
+    for item in found:
+        unique[(_name_key(item["alias"]), _name_key(item["canonical"]))] = item
+    return list(unique.values())
+
+
 def _claim_words(fact):
     return tuple("be" if word in {"is", "was", "are", "were"} else word
                  for word in re.findall(r"[a-z0-9]+", fact.casefold()))
@@ -266,6 +332,10 @@ def database(project):
         topic TEXT NOT NULL, fact TEXT NOT NULL, certainty TEXT NOT NULL,
         evidence TEXT NOT NULL, source_id TEXT NOT NULL,
         scope TEXT NOT NULL DEFAULT 'timeline')""")
+        db.execute("""CREATE TABLE IF NOT EXISTS character_aliases (
+        id TEXT PRIMARY KEY, alias TEXT NOT NULL, canonical TEXT NOT NULL,
+        source_id TEXT NOT NULL, evidence TEXT NOT NULL,
+        UNIQUE(alias, canonical))""")
     # Additive compatibility for an experimental ledger already created.
         columns = {row[1] for row in db.execute("PRAGMA table_info(knowledge)")}
         if "scope" not in columns:
@@ -281,14 +351,96 @@ def database(project):
         db.close()
 
 
-def record(project, source_id, entries, *, timeline=True):
-    """Append states; replaying a source never duplicates its states."""
-    if not entries:
+def _alias_resolution(db):
+    """Return unambiguous alias and reverse maps from an open read-only DB."""
+    try:
+        rows = db.execute("SELECT alias,canonical FROM character_aliases").fetchall()
+    except sqlite3.OperationalError:
+        return {}, {}
+    by_alias, display = {}, {}
+    for alias, canonical in rows:
+        key = _name_key(alias)
+        by_alias.setdefault(key, set()).add(canonical)
+        display.setdefault(key, alias)
+    # An alias linked to two people is intentionally unresolved.
+    unique = {key: next(iter(values)) for key, values in by_alias.items()
+              if key and len({_name_key(value) for value in values}) == 1}
+    resolved = {}
+    for alias_key, canonical in unique.items():
+        current = canonical
+        seen = {alias_key}
+        for _ in range(8):
+            key = _name_key(current)
+            if key in seen or key not in unique:
+                break
+            seen.add(key)
+            current = unique[key]
+        resolved[alias_key] = current
+    reverse = {}
+    for alias_key, canonical in resolved.items():
+        reverse.setdefault(_name_key(canonical), []).append(display[alias_key])
+    return resolved, reverse
+
+
+def record_aliases(project, source_id, source):
+    """Append explicit identity links without rewriting existing knowledge."""
+    aliases = explicit_aliases(source)
+    if not aliases:
         return 0
     inserted = 0
     with database(project) as db:
         db.execute("BEGIN IMMEDIATE")
+        for item in aliases:
+            identity = "|".join((source_id, _name_key(item["alias"]),
+                                 _name_key(item["canonical"])))
+            alias_id = hashlib.sha256(identity.encode()).hexdigest()
+            result = db.execute("""INSERT OR IGNORE INTO character_aliases
+                (id,alias,canonical,source_id,evidence) VALUES (?,?,?,?,?)""",
+                (alias_id, item["alias"], item["canonical"], source_id,
+                 item["evidence"]))
+            inserted += result.rowcount
+    return inserted
+
+
+def aliases(project, character=None):
+    """Return aliases for one canonical character, or all unambiguous links."""
+    path = Path(project["folder"]) / ".storyteller" / "memory" / "character-knowledge.sqlite3"
+    if not path.is_file() or path.is_symlink():
+        return [] if character else {}
+    with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)) as db:
+        _, reverse = _alias_resolution(db)
+        if character is None:
+            return reverse
+        return reverse.get(_name_key(character), [])
+
+
+def canonical_character(project, character):
+    """Resolve a character only when its alias has one unambiguous owner."""
+    path = Path(project["folder"]) / ".storyteller" / "memory" / "character-knowledge.sqlite3"
+    if not path.is_file() or path.is_symlink():
+        return character
+    with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)) as db:
+        resolved, _ = _alias_resolution(db)
+        return resolved.get(_name_key(character), character)
+
+
+def record(project, source_id, entries, *, timeline=True, source=None):
+    """Append states; replaying a source never duplicates its states."""
+    alias_count = record_aliases(project, source_id, source) if source else 0
+    if not entries:
+        return alias_count
+    path = Path(project["folder"]) / ".storyteller" / "memory" / "character-knowledge.sqlite3"
+    if path.is_file() and not path.is_symlink():
+        with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)) as source_db:
+            resolved, _ = _alias_resolution(source_db)
+    else:
+        resolved = {}
+    inserted = 0
+    with database(project) as db:
+        db.execute("BEGIN IMMEDIATE")
         for item in entries:
+            item = dict(item)
+            item["character"] = resolved.get(_name_key(item["character"]), item["character"])
             topic = reconcile_topic(db, item)
             key = "|".join((source_id, item["character"].casefold(),
                             topic.casefold(), item["fact"].casefold(),
@@ -302,7 +454,7 @@ def record(project, source_id, entries, *, timeline=True):
             inserted += result.rowcount
     if inserted:
         export_markdown(project)
-    return inserted
+    return inserted + alias_count
 
 
 def reconcile_topic(db, item):
@@ -360,7 +512,10 @@ def export_markdown(project):
         raise ValueError("Refusing symbolic link for character knowledge export")
     lines = ["# Character perspectives", "", "Beliefs and suspicions below are attributed to characters; they are not world canon.", ""]
     for row in current(project):
-        lines.extend((f"## {row['character']} — {row['topic']}",
+        heading = row["character"]
+        if row.get("aliases"):
+            heading += " (also known as " + ", ".join(row["aliases"]) + ")"
+        lines.extend((f"## {heading} — {row['topic']}",
                       f"- {row['certainty'].replace('_', ' ')}: {row['fact']}",
                       f"- Source: {row['source_id']}",
                       f"- Evidence: {row['evidence']}", ""))
@@ -375,23 +530,19 @@ def current(project):
         import narrative_memory
         return [{"character": row["actor"], "topic": row["topic"], "fact": row["claim"],
                  "certainty": row["certainty"], "evidence": row["evidence"],
-                 "source_id": row["source_id"]}
+                 "source_id": row["source_id"], "aliases": row.get("aliases", [])}
                 for row in narrative_memory.snapshot(project) if row["status"] == "current"]
     path = Path(project["folder"]) / ".storyteller" / "memory" / "character-knowledge.sqlite3"
     if not path.is_file() or path.is_symlink():
         return []
-    with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as db:
-        columns = {row[1] for row in db.execute("PRAGMA table_info(knowledge)")}
-        order = (("(newer.scope='timeline') DESC, newer.sequence DESC")
-                 if "scope" in columns else "newer.sequence DESC")
-        return [dict(zip(("character", "topic", "fact", "certainty", "evidence", "source_id"), row))
-                for row in db.execute(f"""SELECT character,topic,fact,certainty,evidence,source_id
-                    FROM knowledge AS k WHERE sequence = (
-                      SELECT sequence FROM knowledge AS newer
-                      WHERE lower(newer.character)=lower(k.character)
-                      AND lower(newer.topic)=lower(k.topic)
-                      ORDER BY {order} LIMIT 1)
-                    ORDER BY sequence DESC""")]
+    selected = {}
+    for row in history(project):
+        selected[(row["character"].casefold(), row["topic"].casefold())] = row
+    return [{"character": row["character"], "topic": row["topic"],
+             "fact": row["fact"], "certainty": row["certainty"],
+             "evidence": row["evidence"], "source_id": row["source_id"],
+             "aliases": row.get("aliases", [])}
+            for row in reversed(list(selected.values()))]
 
 
 def relevant(project, query, terms, limit=1400, *, temporal_query=None):
@@ -406,14 +557,18 @@ def relevant(project, query, terms, limit=1400, *, temporal_query=None):
                               temporal_query if temporal_query is not None else query, re.I))
     ranked = []
     for row in current(project):
-        score = len(query_terms & terms(row["character"])) * 3
+        score = len(query_terms & terms(row["character"] + " " +
+                                        " ".join(row.get("aliases", [])))) * 3
         score += len(query_terms & terms(row["topic"] + " " + row["fact"]))
         if score:
             ranked.append((score, row))
     ranked.sort(key=lambda value: -value[0])
     lines = []
     for _, row in ranked:
-        line = (f"- {row['character']} {row['certainty'].replace('_', ' ')}: {row['fact']} "
+        label = row["character"]
+        if row.get("aliases"):
+            label += " (also known as " + ", ".join(row["aliases"]) + ")"
+        line = (f"- {label} {row['certainty'].replace('_', ' ')}: {row['fact']} "
                 f"[source: {row['source_id']}; evidence: {row['evidence']}]")
         if len("\n".join(lines + [line])) > limit:
             continue
@@ -445,9 +600,16 @@ def history(project):
         order = "CASE WHEN source_order>0 THEN source_order ELSE sequence END" if "source_order" in columns else "sequence"
         fields = ("sequence", "character", "topic", "fact", "certainty", "evidence", "source_id",
                   "scope", "source_order")
-        return [dict(zip(fields, row)) for row in db.execute(
-            f"SELECT sequence,character,topic,fact,certainty,evidence,source_id,{scope},{order} "
-            f"FROM knowledge ORDER BY ({scope}='timeline'),sequence")]
+        resolved, reverse = _alias_resolution(db)
+        result = []
+        for values in db.execute(
+                f"SELECT sequence,character,topic,fact,certainty,evidence,source_id,{scope},{order} "
+                f"FROM knowledge ORDER BY ({scope}='timeline'),sequence"):
+            row = dict(zip(fields, values))
+            row["character"] = resolved.get(_name_key(row["character"]), row["character"])
+            row["aliases"] = reverse.get(_name_key(row["character"]), [])
+            result.append(row)
+        return result
 
 
 def _earlier_states(project, current_row):

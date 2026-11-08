@@ -1,4 +1,4 @@
-# Storyteller 0.8.0 — Local story memory for Jan
+# Storyteller 0.8.1 — Local story memory for Jan
 
 Storyteller acts as a small OpenAI-compatible gateway between Jan's chat UI and Jan's own Local API Server. It is **not** another chat application.
 
@@ -24,11 +24,14 @@ pass instead of the focused perspective pass. It can capture named witnesses and
 keeps spoken claims separate from facts. It costs more CPU time; ordinary chat
 does not gain another model call. Data Dump remains timeless. Both imports and
 new conversation knowledge use one ordered character history for retrieval.
+When the source explicitly links two names (for example, “Mara Ashford, also
+known as the Red Fox”), they share one character history. Unclear or conflicting
+aliases remain separate rather than being guessed together.
 
 The 0.8 release passed a disposable-project check through Jan’s local Cydonia
 API, including current/history answers, delayed author-message learning,
 streaming, and response-learning OFF. This checked the API rather than Jan’s
-graphical chat interface. Implied corrections, semantic aliases, and arbitrary
+graphical chat interface. Implied corrections and arbitrary
 contradictions still require further work; extraction is imperfect.
 
 ## What normal chat saves

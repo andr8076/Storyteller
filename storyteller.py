@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Storyteller 0.8.0: project-scoped lore injection and narrative memory.
+"""Storyteller 0.8.1: project-scoped lore injection and narrative memory.
 
 No daemon, plugins, Jan file editing, or extra Python packages required.
 All traffic stays on 127.0.0.1. Run only when wanted.
@@ -558,7 +558,7 @@ def serve(args):
     Gateway.projects = projects
     Gateway.upstream = address
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Gateway)
-    print(f"Storyteller 0.8.0 on http://127.0.0.1:{args.port}/v1", flush=True)
+    print(f"Storyteller 0.8.1 on http://127.0.0.1:{args.port}/v1", flush=True)
     for project in projects.values():
         print(f"  {project['alias']} -> {project['folder']}", flush=True)
     print("Only runs while this terminal is open. Press Ctrl+C to stop.", flush=True)
