@@ -28,6 +28,7 @@ import storyteller
 import story_state
 import character_knowledge
 import narrative_ledger
+import relationship_memory
 
 ROOT = Path(__file__).resolve().parent
 EXTENSIONS = {".txt", ".md", ".markdown"}
@@ -649,6 +650,8 @@ def run_import(project, mode, source, plan=None):
                                               timeline=(mode == "catchup"))
                     count += character_knowledge.record(project, source_ref, perspectives,
                                                         timeline=(mode == "catchup"), source=chunk)
+                    relationship_memory.record(project, source_ref, valid,
+                                              timeline=(mode == "catchup"))
                     rejected.extend({"reason": "knowledge: " + reason, "detail": ""}
                                     for reason in knowledge_rejected)
                     if mode == "dump":

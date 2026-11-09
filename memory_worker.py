@@ -21,6 +21,7 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 import story_state
 import character_knowledge
+import relationship_memory
 
 HOME = Path(__file__).resolve().parent
 MODEL_FILE = HOME / "models" / "qwen3.5-2b-Q4_K_M.gguf"
@@ -751,6 +752,7 @@ class Worker:
                         count = apply_changes(project, identifier, changes)
                         count += character_knowledge.record(project, identifier, perspectives,
                                                              source=source)
+                        relationship_memory.record(project, identifier, changes, timeline=True)
                         if rejects:
                             with open(base / "review.jsonl", "a", encoding="utf-8") as f:
                                 for reason, detail in rejects:
@@ -799,6 +801,7 @@ class Worker:
                     count = apply_changes(project, identifier, changes)
                     count += character_knowledge.record(project, identifier, perspectives,
                                                          source=scene)
+                    relationship_memory.record(project, identifier, changes, timeline=True)
                     if rejects:
                         # A human can inspect untrusted or uncertain suggestions.
                         with open(base / "review.jsonl", "a", encoding="utf-8") as f:

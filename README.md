@@ -1,4 +1,4 @@
-# Storyteller 0.8.1 — Local story memory for Jan
+# Storyteller 0.8.2 — Local story memory for Jan
 
 Storyteller acts as a small OpenAI-compatible gateway between Jan's chat UI and Jan's own Local API Server. It is **not** another chat application.
 
@@ -28,6 +28,15 @@ When the source explicitly links two names (for example, “Mara Ashford, also
 known as the Red Fox”), they share one character history. Unclear or conflicting
 aliases remain separate rather than being guessed together.
 
+Explicit relationship states are also kept in an append-only, source-backed
+ledger. A later statement such as “Mara no longer trusts Rhea” becomes the
+current relationship state without deleting the earlier evidence. Questions
+about the present receive the current state; questions containing “before” or
+“earlier” can retrieve the previous state as history. Symmetric relationships
+such as marriage and alliance reconcile even when the names are written in the
+opposite order. Ordinary actions such as meeting someone are not treated as a
+relationship.
+
 The 0.8 release passed a disposable-project check through Jan’s local Cydonia
 API, including current/history answers, delayed author-message learning,
 streaming, and response-learning OFF. This checked the API rather than Jan’s
@@ -52,6 +61,8 @@ it does not change the original event log or the current continuation point.
 Historical questions about a character's earlier belief can also retrieve
 prior source-backed states from the character ledger. Ordinary writing requests
 continue to receive only the character's latest state.
+Relationship changes use the same current-versus-history rule and are shown in
+the readable `relationship-history.md` export with their source evidence.
 
 A pre-existing chapter pasted as a **user message** in an ordinary Jan chat
 is not automatically imported as canon. Use **Catch Up (C)** for existing
@@ -206,6 +217,8 @@ Within the project folder:
     summary.md                manually edited — always included
     recent-events.md          automatically generated
     events.jsonl              append-only extraction history
+    relationship-history.sqlite3  current/history relationship states
+    relationship-history.md   readable current relationship export
     characters/
       irena-solis.md          auto-created / updated for explicit facts
     world/

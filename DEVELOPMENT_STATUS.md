@@ -1,7 +1,7 @@
 # Development status
 
 ## Current objective
-0.8.1 adds evidence-backed character identity links on top of the accepted 0.8.0 release. The functional scope remains local manual launch, safe imports, persistent character history, current/historical retrieval, request snapshot isolation, optional reply learning, and safe alias reconciliation.
+0.8.2 adds an evidence-backed relationship-state ledger on top of the accepted 0.8.1 release. The functional scope remains local manual launch, safe imports, persistent character/relationship history, current/historical retrieval, request snapshot isolation, optional reply learning, and safe alias reconciliation.
 
 ## Implemented
 - Jan gateway, Data Dump, Catch Up, author-message learning, and persistent reply-learning ON/OFF remain in place. Imports do not contact the creative model; Catch Up advances continuation only on completion.
@@ -13,6 +13,8 @@
 - The source_order column is an additive write-time schema extension. Old databases can be read without migration, and all existing history is preserved. The readable character-knowledge.md follows the selected view.
 - Projection now indexes candidate propositions rather than comparing every record with every earlier record. A 600-record synthetic fixture fell from 2.436s to 0.004s locally.
 - Explicit aliases such as “Mara Ashford, also known as the Red Fox” are stored in the same project-local history database. Alias facts resolve to one canonical character for current/history views and retrieval. Conflicting links remain unresolved; no name similarity is treated as identity.
+- Explicit relationship clauses are stored in a project-local append-only relationship ledger. A later active/negative state becomes the current view without deleting earlier evidence; temporal questions retrieve the earlier state. Narrow parsing covers trust, love, hate, fear, debt, work, friendship, alliance, enemies, marriage, sibling/parent, and partner forms. Symmetric relations reconcile reversed name order. Ordinary actions such as meeting are not promoted.
+- Relationship states are written by Data Dump, Catch Up, and normal author/response learning after the same evidence validation as other facts. `relationship-history.md` is a human-readable current-state export; `relationship-history.sqlite3` is project-local and idempotent on retries.
 - SQLite connections used by event retrieval, import progress, character-history reads, the memory worker, and the control-panel status view now close explicitly. The event-index and runtime paths no longer leak connections; remaining warnings in the broad test run come from test fixtures that use sqlite3's commit-only context manager.
 
 ## Verified
@@ -24,16 +26,16 @@
 - Build-Arch: c2454f1 deployed cleanly; all four narrative-memory integration tests passed there. Live Jan CLI/Cydonia 24B plus CPU Qwen3.5-2B acceptance passed all seven checks: persistent N setting, corrected current state, earlier belief, same-request isolation, next-request learning, response-learning OFF, and streaming. Inspected writer answers were correct. All four replies reached disabled processing status. Test projects were temporary; both model servers stopped and ports closed afterward. Jan graphical chat was not exercised.
 - Reusable live check: experiments/smoke_jan.py. Evidence: experiments/results/jan_acceptance_2026-11-07.json. Four final writing calls took 2.07/0.42/0.16/0.56 seconds (warm, tiny prompts; not a general performance benchmark). Earlier setup attempts exposed authentication and test-reader null-content handling; both fixed. API-key instructions now require matching Jan’s key.
 - Release changes after that test are the version label, documentation, reusable acceptance script/report, restoration of storyteller.py executable mode, and the additive alias-resolution path.
-- Targeted alias checks pass on Build-Arch, and the full local suite passes: 85 tests. The live multi-scene probe was stopped after Jan returned HTTP 500 before producing a scene; the Build-Arch GPU was already under load. Its temporary Jan and memory processes were cleaned up and no ports were left open.
+- Targeted alias checks pass on Build-Arch, and the full local suite passes locally: 93 tests. The relationship parser, current/history projection, evidence requirement, reverse-order symmetry, gateway injection, project isolation, Data Dump/Catch Up source preservation, and normal-learning worker boundary are covered. Build-Arch remains unavailable for this cycle, so no live Jan relationship session has been run yet. The earlier live multi-scene probe was stopped after Jan returned HTTP 500 before producing a scene; its temporary Jan and memory processes were cleaned up and no ports were left open.
 
 ## Important findings and boundaries
 - The broader 9B pass captured 3/3 character perspectives versus 2/3 for the focused pass in the saved flute scene; times were 64.74s versus 29.48s. Two live calls used 614 generated tokens. The base 2B response was mocked empty to isolate that comparison.
 - Exact live outputs and the original temporal failure are retained in experiments/results/narrative_memory_2026-11-06.json. experiments/compare_narrative_memory.py supports replay without inference; the explicit-correction probe now passes.
 - A burned object later being found does not by itself prove the earlier statement false. The deterministic regression uses destroyed versus never destroyed. Do not silently infer arbitrary contradictions.
-- Reconciliation covers equivalent copular statements and explicit negation. Semantic opposites, implied corrections, aliases, flashback chronology, and exhaustive extraction remain limited. Retrieval is lexical. Full-manuscript and long-running Jan quality have not been established.
+- Relationship reconciliation is deliberately literal: explicit polarity changes and a narrow set of relationship verbs are supported, while semantic opposites, implied corrections, implicit relationship changes, and flashback chronology remain limited. Retrieval is lexical. Full-manuscript and long-running Jan quality have not been established.
 - Existing shadow-only episode records are preserved but are not silently backfilled into shared character history. N can immediately project existing character history; new imports publish richer observations.
 - The architecture adapts provenance/append-only ideas considered in Narra; no framework/database migration or external inference is required.
 - Relevant previous commits: c2454f1 shared history/release candidate; 4347d41 validated-perspective merge; e32f046 saved live comparison; 2168e9c corrected temporal views and complete observations.
 
 ## Single next action
-Use 0.8.1 for a short real writing session in Jan with N enabled when the GPU is free. Collect one concrete continuity or extraction miss, if any, to choose the next improvement. Long-session quality, implied corrections, and flashback chronology remain future work; alias links are now handled only when explicitly evidenced. No framework migration is required before using this release.
+Use 0.8.2 for a short real writing session in Jan with N enabled when the GPU is free. Include one explicit relationship change and one present/earlier question to verify the ledger through the real Cydonia path. Then choose the next highest-value gap from live evidence; semantic corrections, implicit relationship changes, and flashback chronology remain future work. No framework migration is required before using this release.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Storyteller 0.8.1: project-scoped lore injection and narrative memory.
+"""Storyteller 0.8.2: project-scoped lore injection and narrative memory.
 
 No daemon, plugins, Jan file editing, or extra Python packages required.
 All traffic stays on 127.0.0.1. Run only when wanted.
@@ -26,6 +26,7 @@ import prompt_affixes
 import memory_retrieval
 import event_history
 import character_knowledge
+import relationship_memory
 
 ROOT = Path(__file__).resolve().parent
 CONFIG = Path(os.environ.get("STORYTELLER_CONFIG", ROOT / "projects.json"))
@@ -192,8 +193,9 @@ def select_memory(project, messages):
         files.append(recent)
     state_file = story_state.location(project) / "story-state.md"
     ledger_file = root / "character-knowledge.sqlite3"
+    relationship_file = root / "relationship-history.sqlite3"
     if (not files and not state_file.is_file() and not ledger_file.is_file()
-            and not (root / "events.jsonl").is_file()):
+            and not relationship_file.is_file() and not (root / "events.jsonl").is_file()):
         return "", []
     parts, selected = [], []
     remaining = MEMORY_MAX
@@ -217,6 +219,19 @@ def select_memory(project, messages):
         parts.append("### CHARACTER PERSPECTIVES (attributed; beliefs are not world facts)\n" + perspective)
         selected.append("memory/character-knowledge.sqlite3")
         remaining -= len(perspective)
+    try:
+        relationships = relationship_memory.relevant(
+            project, latest_user, terms, limit=min(remaining, 1400),
+            temporal_query=latest_user)
+    except (sqlite3.Error, OSError, ValueError) as exc:
+        print(f"[Storyteller] relationship memory unavailable: {type(exc).__name__}",
+              flush=True)
+        relationships = ""
+    if relationships:
+        parts.append("### RELATIONSHIP STATES (source-backed; current unless asking about earlier history)\n"
+                     + relationships)
+        selected.append("memory/relationship-history.sqlite3")
+        remaining -= len(relationships)
     try:
         historical = event_history.relevant(project, latest_user, terms,
                                             limit=min(remaining, 1600))
@@ -558,7 +573,7 @@ def serve(args):
     Gateway.projects = projects
     Gateway.upstream = address
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Gateway)
-    print(f"Storyteller 0.8.1 on http://127.0.0.1:{args.port}/v1", flush=True)
+    print(f"Storyteller 0.8.2 on http://127.0.0.1:{args.port}/v1", flush=True)
     for project in projects.values():
         print(f"  {project['alias']} -> {project['folder']}", flush=True)
     print("Only runs while this terminal is open. Press Ctrl+C to stop.", flush=True)
