@@ -78,6 +78,20 @@ class RelationshipMemoryTests(unittest.TestCase):
             self.assertEqual(len(relationship_memory.current(project)), 1)
             self.assertEqual(relationship_memory.current(project)[0]["polarity"], 0)
 
+    def test_alias_learned_later_reconciles_existing_relationship_rows(self):
+        with tempfile.TemporaryDirectory() as folder:
+            project = {"alias": "fiction", "folder": folder}
+            relationship_memory.record(
+                project, "scene-1", [relation("Red Fox trusts Rhea")])
+            character_knowledge.record_aliases(
+                project, "scene-2", "Mara Ashford, also known as the Red Fox, entered.")
+            current = relationship_memory.current(project)
+            self.assertEqual(len(current), 1)
+            self.assertEqual(current[0]["subject"], "Mara Ashford")
+            retrieved = relationship_memory.relevant(
+                project, "Does Mara Ashford trust Rhea?", storyteller.terms)
+            self.assertIn("Red Fox trusts Rhea", retrieved)
+
     def test_markdown_and_project_isolation_preserve_evidence(self):
         with tempfile.TemporaryDirectory() as folder, tempfile.TemporaryDirectory() as other:
             project = {"alias": "fiction", "folder": folder}

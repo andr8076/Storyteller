@@ -170,9 +170,25 @@ def history(project):
                     ORDER BY (scope='timeline'), sequence""")]
 
 
+def _resolved_history(project):
+    """Resolve aliases for a read without rewriting the source-backed rows."""
+    rows = history(project)
+    cache = {}
+    resolved = []
+    for row in rows:
+        item = dict(row)
+        for field in ("subject", "object"):
+            name = item[field]
+            if name not in cache:
+                cache[name] = character_knowledge.canonical_character(project, name)
+            item[field] = cache[name]
+        resolved.append(item)
+    return resolved
+
+
 def current(project):
     selected = {}
-    for row in history(project):
+    for row in _resolved_history(project):
         key = _relationship_key(row)
         selected[key] = row
     return list(reversed(list(selected.values())))
@@ -192,7 +208,7 @@ def _relationship_key(row):
 def relevant(project, query, terms, *, limit=1200, temporal_query=None):
     if limit <= 0:
         return ""
-    rows = history(project)
+    rows = _resolved_history(project)
     if not rows:
         return ""
     temporal = bool(TEMPORAL_QUERY.search(temporal_query if temporal_query is not None else query))
