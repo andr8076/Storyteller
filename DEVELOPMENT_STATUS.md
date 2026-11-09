@@ -35,7 +35,7 @@
 - Relationship reconciliation is deliberately literal: explicit polarity changes and a narrow set of relationship verbs are supported, while semantic opposites, implied corrections, implicit relationship changes, and flashback chronology remain limited. Retrieval is lexical. Full-manuscript and long-running Jan quality have not been established.
 - Existing shadow-only episode records are preserved but are not silently backfilled into shared character history. N can immediately project existing character history; new imports publish richer observations.
 - The architecture adapts provenance/append-only ideas considered in Narra; no framework/database migration or external inference is required.
-- Relevant previous commits: c2454f1 shared history/release candidate; 4347d41 validated-perspective merge; e32f046 saved live comparison; 2168e9c corrected temporal views and complete observations.
+- Relevant commits: c2454f1 shared history/release candidate; 4347d41 validated-perspective merge; e32f046 saved live comparison; 2168e9c corrected temporal views and complete observations; 6663eb4 relationship ledger; d439b69 alias-aware relationship views.
 
 ## Single next action
 Use 0.8.2 for a short real writing session in Jan with N enabled when the GPU is free. Include one explicit relationship change and one present/earlier question to verify the ledger through the real Cydonia path. Then choose the next highest-value gap from live evidence; semantic corrections, implicit relationship changes, and flashback chronology remain future work. No framework migration is required before using this release.
